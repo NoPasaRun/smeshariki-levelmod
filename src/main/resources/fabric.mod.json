@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"id": "levelmod",
+	"version": "${version}",
+	"name": "LevelMod",
+	"description": "Катсцены, музыка и уровни для смешариков.",
+	"authors": ["bogdan"],
+	"license": "MIT",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["com.smeshariki.level.LevelMod"],
+		"client": ["com.smeshariki.level.client.LevelModClient"]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": "*",
+		"gameplaymod": "*",
+		"behaviormod": "*",
+		"buildmod": "*"
+	}
+}
