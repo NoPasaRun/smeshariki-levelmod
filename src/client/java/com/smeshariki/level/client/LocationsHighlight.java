@@ -39,7 +39,7 @@ final class LocationsHighlight {
 	}
 
 	private static boolean active() {
-		return ClientLevels.canEdit && (ClientLevels.inLocations || ClientLevels.locationsOpen);
+		return ClientLevels.editing() && (ClientLevels.inLocations || ClientLevels.locationsOpen);
 	}
 
 	/** Имя ближайшей локации: в её области или не дальше 8 блоков от точки. */

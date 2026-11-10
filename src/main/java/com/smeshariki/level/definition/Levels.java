@@ -36,7 +36,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Загруженные из датапаков уровни и кат-сцены. Уровень в файле ссылается на локации мира строкой {@code "@имя"}, поэтому пересобирается и при их правке.
+ * Загруженные из файлов ({@link LevelFiles}) уровни и кат-сцены. Уровень в файле ссылается на локации мира строкой {@code "@имя"}, поэтому пересобирается и при их правке.
  * Это кэш ресурсов, а не состояние мира: он перечитывается при каждой загрузке данных.
  * Уровни анализируются после загрузки обоих каталогов, поэтому порядок их чтения не важен.
  */
@@ -47,9 +47,20 @@ public final class Levels {
 
 	private static Map<Identifier, JsonElement> packLevels = Map.of();
 
-	/** Есть ли уровень в файлах датапаков (модов). */
-	public static boolean hasFile(Identifier id) {
+	/** Есть ли у уровня заготовка в моде (датапак {@code data/<мод>/level/*.json}): тогда можно вернуть исходный вид. */
+	public static boolean hasTemplate(Identifier id) {
 		return packLevels.containsKey(id);
+	}
+
+	/** Заготовка мода для уровня. */
+	public static @Nullable JsonElement template(Identifier id) {
+		return packLevels.get(id);
+	}
+
+	/** Автор менял уровень: файл отличается от заготовки мода. */
+	public static boolean overridesTemplate(Identifier id) {
+		JsonElement template = packLevels.get(id);
+		return template != null && LevelFiles.differsFrom(id, template);
 	}
 	private static List<String> problems = List.of();
 	private static List<String> missingLocations = List.of();
@@ -86,15 +97,15 @@ public final class Levels {
 		return new LevelAnalyzer.Result(result.expectedTicks(), problems);
 	}
 
-	/** Пересобирает список из датапаков и уровней мира, созданных в редакторе. */
+	/** Перечитывает уровни из файлов ({@link LevelFiles}: заготовки мода копируются туда при первой загрузке) и пересобирает список. */
 	public static void rebuild(MinecraftServer server) {
 		LevelStore store = LevelStore.get(server);
+		LevelFiles.sync(server, packLevels, store);
 		Set<String> missing = new TreeSet<>();
 		List<String> errors = new ArrayList<>();
 		Map<Identifier, LevelDefinition> all = new HashMap<>();
-		Map<Identifier, JsonElement> sources = new HashMap<>(packLevels);
-		sources.keySet().removeAll(store.hiddenLevels());
-		store.customLevels().forEach((id, json) -> sources.put(id, JsonParser.parseString(json)));
+		Map<Identifier, JsonElement> sources = new HashMap<>();
+		LevelFiles.all().forEach((id, json) -> sources.put(id, JsonParser.parseString(json)));
 		sources.forEach((id, json) -> {
 			Set<String> own = new TreeSet<>();
 			Parsed parsed = parse(json, store, own);
@@ -157,12 +168,9 @@ public final class Levels {
 		return json;
 	}
 
-	/** JSON уровня для редактора: правка из мира или файл. */
-	public static @Nullable String source(Identifier id, LevelStore store) {
-		String custom = store.customLevels().get(id);
-		if (custom != null) return custom;
-		JsonElement file = packLevels.get(id);
-		return file == null ? null : file.toString();
+	/** JSON уровня для редактора: содержимое его файла. */
+	public static @Nullable String source(Identifier id) {
+		return LevelFiles.get(id);
 	}
 
 	/** Что не загрузилось и почему: автору уровня. */

@@ -27,6 +27,8 @@ dependencies {
 	implementation files("../BehaviorMod/build/libs/behaviormod-1.0.0.jar")
 	// BuildMod (рисование контура, OutlineDrawing): так же, пересобирайте его перед сборкой этого мода.
 	implementation files("../BuildMod/build/libs/buildmod-1.0.0.jar")
+	// версии мира: возврат блоков читает текущую версию через API
+	implementation files("../ManagementMod/build/libs/managementmod-1.0.0.jar")
 }
 
 processResources {

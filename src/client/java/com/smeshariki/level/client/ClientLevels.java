@@ -15,6 +15,12 @@ final class ClientLevels {
 	static int age;
 	static List<Identifier> cutscenes = List.of();
 	static boolean canEdit, testing;
+
+	/** Редактор доступен: хозяину и только в творческом режиме. В выживании окно уровней даёт одно — начать уровень. */
+	static boolean editing() {
+		var mc = net.minecraft.client.Minecraft.getInstance();
+		return canEdit && mc.player != null && mc.player.isCreative();
+	}
 	/** L возвращает в окно локаций: рисование области можно отменить туда же. */
 	static boolean inLocations;
 	/** Открыто окно локаций (в том числе из выбора места): все локации подсвечены в мире. */

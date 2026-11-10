@@ -56,8 +56,9 @@ public class LevelModClient implements ClientModInitializer {
 			if (mc.options.keyAdvancements.same(OPEN)) while (mc.options.keyAdvancements.consumeClick()) ;
 			OutlineDrawing.cancel();
 			ClientLevels.locationsOpen = false;
-			if (ClientLevels.draft != null) LevelEditorScreen.reopen(mc);
-			else if (ClientLevels.inLocations) mc.gui.setScreen(new LocationsScreen());
+			// в выживании окно одно — список уровней, начать уровень; черновик и локации остаются на потом, до творческого режима
+			if (ClientLevels.draft != null && ClientLevels.editing()) LevelEditorScreen.reopen(mc);
+			else if (ClientLevels.inLocations && ClientLevels.editing()) mc.gui.setScreen(new LocationsScreen());
 			else mc.gui.setScreen(new LevelManagerScreen());
 		});
 	}

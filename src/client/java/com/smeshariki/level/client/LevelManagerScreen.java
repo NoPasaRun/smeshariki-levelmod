@@ -64,11 +64,11 @@ final class LevelManagerScreen extends Screen {
 		if (current() == null) selected = shown.isEmpty() ? null : shown.getFirst().id();
 		int y = height - MARGIN - BUTTON_H;
 		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.close"), b -> onClose()).bounds(width - MARGIN - 70, y, 70, BUTTON_H).build());
-		if (ClientLevels.canEdit) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.create"), b -> LevelEditorScreen.open(minecraft, LevelDraft.blank())).bounds(MARGIN, y, 50, BUTTON_H).build());
-		if (ClientLevels.canEdit) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.locations"), b -> minecraft.gui.setScreen(new LocationsScreen())).bounds(width - MARGIN - 70, 3, 70, 18).build());
+		if (ClientLevels.editing()) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.create"), b -> LevelEditorScreen.open(minecraft, LevelDraft.blank())).bounds(MARGIN, y, 50, BUTTON_H).build());
+		if (ClientLevels.editing()) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.locations"), b -> minecraft.gui.setScreen(new LocationsScreen())).bounds(width - MARGIN - 70, 3, 70, 18).build());
 		LevelInfo level = current();
 		if (level == null) return;
-		if (ClientLevels.canEdit && level.source().isPresent()) {
+		if (ClientLevels.editing() && level.source().isPresent()) {
 			boolean free = level.run().isEmpty();
 			addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.edit"), b -> LevelEditorScreen.open(minecraft, LevelDraft.of(level.id(), level.source().get()))).bounds(MARGIN + 52, y, 48, BUTTON_H).build()).active = free;
 			// уровень из файла с правкой из редактора: вместо удаления — вернуть файл (удалить можно после)
