@@ -29,8 +29,10 @@ import net.minecraft.world.phys.Vec3;
  * @param testAreas её области, для показа
  * @param testTasks её задачи, для списка на экране
  * @param locations локации для того, кому доступен редактор
+ * @param groups реестр групп объектов для того, кому доступен редактор
+ * @param resetPercent сколько процентов отката мира после уровня сделано; {@code -1} — отката нет
  */
-public record LevelList(List<LevelInfo> levels, List<Identifier> cutscenes, boolean canEdit, boolean testing, List<TaskArea> testAreas, List<TaskInfo> testTasks, Locations locations) implements CustomPacketPayload {
+public record LevelList(List<LevelInfo> levels, List<Identifier> cutscenes, boolean canEdit, boolean testing, List<TaskArea> testAreas, List<TaskInfo> testTasks, Locations locations, int resetPercent, List<GroupInfo> groups) implements CustomPacketPayload {
 	/**
 	 * @param mission номер миссии
 	 * @param mine касается ли задача этого игрока
@@ -76,6 +78,11 @@ public record LevelList(List<LevelInfo> levels, List<Identifier> cutscenes, bool
 	 * @param missing какие просят файлы уровней, а их нет
 	 * @param problems какие уровни не загрузились и почему
 	 */
+	/** Группа в реестре: имя и сколько объектов в ней среди загруженных. */
+	public record GroupInfo(String name, int count) {
+		static final StreamCodec<RegistryFriendlyByteBuf, GroupInfo> CODEC = StreamCodec.composite(ByteBufCodecs.STRING_UTF8, GroupInfo::name, ByteBufCodecs.VAR_INT, GroupInfo::count, GroupInfo::new);
+	}
+
 	public record Locations(List<LocationInfo> marked, List<String> missing, List<String> problems) {
 		public static final Locations NONE = new Locations(List.of(), List.of(), List.of());
 		static final StreamCodec<RegistryFriendlyByteBuf, Locations> CODEC = StreamCodec.composite(
@@ -139,6 +146,8 @@ public record LevelList(List<LevelInfo> levels, List<Identifier> cutscenes, bool
 			ByteBufCodecs.fromCodec(TaskArea.CODEC).apply(ByteBufCodecs.list()), LevelList::testAreas,
 			TaskInfo.CODEC.apply(ByteBufCodecs.list()), LevelList::testTasks,
 			Locations.CODEC, LevelList::locations,
+			ByteBufCodecs.VAR_INT.map(i -> i - 1, i -> i + 1), LevelList::resetPercent,
+			GroupInfo.CODEC.apply(ByteBufCodecs.list()), LevelList::groups,
 			LevelList::new);
 
 	@Override

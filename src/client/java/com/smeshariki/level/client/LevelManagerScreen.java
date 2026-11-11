@@ -64,7 +64,12 @@ final class LevelManagerScreen extends Screen {
 		if (current() == null) selected = shown.isEmpty() ? null : shown.getFirst().id();
 		int y = height - MARGIN - BUTTON_H;
 		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.close"), b -> onClose()).bounds(width - MARGIN - 70, y, 70, BUTTON_H).build());
+		if (ClientLevels.testing) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.test.stop"), b -> {
+			ClientPlayNetworking.send(new com.smeshariki.level.net.LevelTestTask(java.util.Optional.empty()));
+			onClose();
+		}).bounds(MARGIN + 104, y, 110, BUTTON_H).build());
 		if (ClientLevels.editing()) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.create"), b -> LevelEditorScreen.open(minecraft, LevelDraft.blank())).bounds(MARGIN, y, 50, BUTTON_H).build());
+		if (ClientLevels.editing()) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.groups"), b -> minecraft.gui.setScreen(new GroupsScreen())).bounds(width - MARGIN - 144, 3, 70, 18).build());
 		if (ClientLevels.editing()) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.locations"), b -> minecraft.gui.setScreen(new LocationsScreen())).bounds(width - MARGIN - 70, 3, 70, 18).build());
 		LevelInfo level = current();
 		if (level == null) return;
@@ -211,6 +216,7 @@ final class LevelManagerScreen extends Screen {
 		super.extractRenderState(g, mouseX, mouseY, delta);
 		g.text(font, title, MARGIN, 9, WHITE);
 		if (!ClientLevels.locations.problems().isEmpty()) g.text(font, Component.translatable("gui.levelmod.locations.problems", ClientLevels.locations.problems().size()), MARGIN + 50, 9, YELLOW);
+		drawReset(g);
 		if (shown.isEmpty()) {
 			g.centeredText(font, Component.translatable("gui.levelmod.empty"), width / 2, height / 2 - 4, GRAY);
 			return;
@@ -222,6 +228,17 @@ final class LevelManagerScreen extends Screen {
 			Component hint = !eligible() ? Component.translatable("gui.levelmod.need_survival") : !level.meta().refusal().isEmpty() ? Component.translatable(level.meta().refusal()) : tooFar(level) ? farHint(level) : null;
 			if (hint != null) g.text(font, firstLine(hint, width - 2 * MARGIN - LIST_W - MARGIN), MARGIN + LIST_W + MARGIN, detailBottom() + 1, YELLOW);
 		}
+	}
+
+	/** Полоса отката мира по центру шапки (справа кнопки «Группы» и «Локации»): пока она не дойдёт до 100%, сюжетные уровни начать нельзя. */
+	private void drawReset(GuiGraphicsExtractor g) {
+		int percent = ClientLevels.resetPercent;
+		if (percent < 0) return;
+		int w = Math.min(150, width / 4), x = (width - w) / 2, y = 14;
+		g.centeredText(font, Component.translatable("gui.levelmod.reset", percent), width / 2, 3, YELLOW);
+		g.fill(x - 1, y - 1, x + w + 1, y + 7, 0xFF334155);
+		g.fill(x, y, x + w, y + 6, 0xFF0E1218);
+		g.fill(x, y, x + w * percent / 100, y + 6, 0xFFFFC857);
 	}
 
 	private void drawList(GuiGraphicsExtractor g, int mouseX, int mouseY) {

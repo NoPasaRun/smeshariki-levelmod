@@ -31,17 +31,34 @@ import net.minecraft.world.phys.Vec3;
  */
 final class GuideArrow {
 	/** Где висит стрелка: впереди по взгляду и ниже глаз, блоков. */
-	private static final double DISTANCE = 2.6, DROP = 1.05;
-	/** Размеры: хвост и древко назад от центра, наконечник вперёд, половина высоты древка и наконечника, блоков. */
-	private static final float TAIL = 0.55f, NECK = 0.1f, HEAD = 0.7f, SHAFT_HALF = 0.1f, HEAD_HALF = 0.34f;
-	/** Цвет стрелки (ARGB) без прозрачности: прозрачность даёт {@link #ALPHA}, помноженная на силу показа. */
-	private static final int RGB = 0xFFE066;
-	private static final int ALPHA = 0x78;
+	private static final double DISTANCE = 2.2, DROP = 1.2;
+	/** Пиксельный рисунок стрелки (остриё справа): столбцы — вперёд, строки — вбок. */
+	private static final String[] SHAPE = {
+		".......#.....",
+		".......##....",
+		"###....###...",
+		"###########..",
+		"############.",
+		"###########..",
+		"###....###...",
+		".......##....",
+		".......#.....",
+	};
+	private static final int COLS = 13, ROWS = 9;
+	/** Размер пикселя, блоков. */
+	private static final float PIXEL = 0.1f;
+	/** Цвета без прозрачности: заливка шахматкой, обводка тёмная. */
+	private static final int FILL = 0xFFE066, FILL_ALT = 0xFFD23F, OUTLINE = 0xC96A12, SIDE = 0x8F4A0C;
+	/** Толщина стрелки, блоков. */
+	private static final float THICK = 0.2f;
+	private static final int ALPHA = 0x78, ALPHA_EDGE = 0xB4;
 	/** Ближе этого к цели (по горизонтали) стрелка не нужна. */
 	private static final double ARRIVED = 4.0;
 	/** Доля пути к нужной силе показа за тик. */
 	private static final float FADE = 0.12f;
 
+	/** Игрок скрыл стрелку (кнопка в окне «О миссии» или клавиша). */
+	static boolean hidden;
 	private static boolean on;
 	private static double targetX, targetZ;
 	private static float strength;
@@ -86,7 +103,7 @@ final class GuideArrow {
 				strength = 0f;
 				return;
 			}
-			float want = on && !WaitOverlay.active() && !mc.player.isSpectator() && distance(mc) > ARRIVED ? 1f : 0f;
+			float want = on && !hidden && !WaitOverlay.active() && !mc.player.isSpectator() && distance(mc) > ARRIVED ? 1f : 0f;
 			strength += (want - strength) * FADE;
 			if (strength < 0.01f && want == 0f) strength = 0f;
 		});
@@ -117,22 +134,38 @@ final class GuideArrow {
 		// впереди по взгляду (в мире, а не на экране), ниже глаз; чуть покачивается
 		double bob = Math.sin((mc.level.getGameTime() + partial) * 0.12) * 0.04;
 		float ox = (float) (-Math.sin(yaw) * DISTANCE), oy = (float) (-DROP + bob), oz = (float) (Math.cos(yaw) * DISTANCE);
-		int color = ((int) (ALPHA * strength) << 24) | RGB;
+		float sx = -fz, sz = fx; // вбок от направления
 		PoseStack pose = ctx.poseStack();
 		ctx.submitNodeCollector().submitCustomGeometry(pose, onTop(), (p, c) -> {
-			// стрела целиком в вертикальной плоскости вдоль направления: u — вперёд, v — вверх
-			// древко
-			quad(c, p, ox, oy, oz, fx, fz, -TAIL, -SHAFT_HALF, -TAIL, SHAFT_HALF, NECK, SHAFT_HALF, NECK, -SHAFT_HALF, color);
-			// наконечник — треугольник: острие повторено, чтобы вышел четырёхугольник
-			quad(c, p, ox, oy, oz, fx, fz, NECK, -HEAD_HALF, NECK, HEAD_HALF, HEAD, 0f, HEAD, 0f, color);
+			// пиксельная стрелка лежит плашмя (повёрнута на 90° вокруг своей оси) и имеет толщину: сверху заливка шахматкой, с боков тёмные грани
+			float top = oy + THICK / 2f, bottom = oy - THICK / 2f;
+			int edgeColor = ((int) (ALPHA_EDGE * strength) << 24) | OUTLINE, sideColor = ((int) (ALPHA_EDGE * strength) << 24) | SIDE;
+			for (int r = 0; r < ROWS; r++) {
+				for (int col = 0; col < COLS; col++) {
+					if (!filled(col, r)) continue;
+					boolean edge = !filled(col - 1, r) || !filled(col + 1, r) || !filled(col, r - 1) || !filled(col, r + 1);
+					int rgb = edge ? OUTLINE : (col + r) % 2 == 0 ? FILL : FILL_ALT;
+					int topColor = ((int) ((edge ? ALPHA_EDGE : ALPHA) * strength) << 24) | rgb;
+					float u0 = (col - COLS / 2f) * PIXEL, u1 = u0 + PIXEL, w0 = (r - ROWS / 2f) * PIXEL, w1 = w0 + PIXEL;
+					face(c, p, ox, oz, fx, fz, sx, sz, topColor, u0, w0, top, u1, w0, top, u1, w1, top, u0, w1, top);
+					face(c, p, ox, oz, fx, fz, sx, sz, edgeColor, u0, w0, bottom, u1, w0, bottom, u1, w1, bottom, u0, w1, bottom);
+					if (!filled(col - 1, r)) face(c, p, ox, oz, fx, fz, sx, sz, sideColor, u0, w0, bottom, u0, w1, bottom, u0, w1, top, u0, w0, top);
+					if (!filled(col + 1, r)) face(c, p, ox, oz, fx, fz, sx, sz, sideColor, u1, w0, bottom, u1, w1, bottom, u1, w1, top, u1, w0, top);
+					if (!filled(col, r - 1)) face(c, p, ox, oz, fx, fz, sx, sz, sideColor, u0, w0, bottom, u1, w0, bottom, u1, w0, top, u0, w0, top);
+					if (!filled(col, r + 1)) face(c, p, ox, oz, fx, fz, sx, sz, sideColor, u0, w1, bottom, u1, w1, bottom, u1, w1, top, u0, w1, top);
+				}
+			}
 		});
 	}
 
-	/** Четырёхугольник стрелки по четырём точкам (u, v) в вертикальной плоскости вдоль (fx, fz); рисуется с обеих сторон, чтобы виден был при любом отсечении. */
-	private static void quad(VertexConsumer c, PoseStack.Pose p, float ox, float oy, float oz, float fx, float fz,
-			float u0, float v0, float u1, float v1, float u2, float v2, float u3, float v3, int color) {
-		float[][] q = {{u0, v0}, {u1, v1}, {u2, v2}, {u3, v3}};
-		for (int i = 0; i < 4; i++) c.addVertex(p, ox + fx * q[i][0], oy + q[i][1], oz + fz * q[i][0]).setColor(color);
-		for (int i = 3; i >= 0; i--) c.addVertex(p, ox + fx * q[i][0], oy + q[i][1], oz + fz * q[i][0]).setColor(color);
+	private static boolean filled(int col, int row) {
+		return col >= 0 && col < COLS && row >= 0 && row < ROWS && SHAPE[row].charAt(col) == '#';
+	}
+
+	/** Грань по четырём точкам (вперёд, вбок, высота относительно точки показа); видна с обеих сторон. */
+	private static void face(VertexConsumer c, PoseStack.Pose p, float ox, float oz, float fx, float fz, float sx, float sz, int color,
+			float... q) {
+		for (int i = 0; i < 4; i++) c.addVertex(p, ox + fx * q[i * 3] + sx * q[i * 3 + 1], q[i * 3 + 2], oz + fz * q[i * 3] + sz * q[i * 3 + 1]).setColor(color);
+		for (int i = 3; i >= 0; i--) c.addVertex(p, ox + fx * q[i * 3] + sx * q[i * 3 + 1], q[i * 3 + 2], oz + fz * q[i * 3] + sz * q[i * 3 + 1]).setColor(color);
 	}
 }

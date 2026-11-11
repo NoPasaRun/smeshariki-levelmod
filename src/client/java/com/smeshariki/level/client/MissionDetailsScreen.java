@@ -21,7 +21,16 @@ final class MissionDetailsScreen extends Screen {
 
 	@Override
 	protected void init() {
-		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.close"), b -> onClose()).bounds((width - 120) / 2, height - 28, 120, 20).build());
+		int bw = Math.min(150, (width - 40) / 2), x0 = (width - (bw * 2 + 4)) / 2, y = height - 28;
+		addRenderableWidget(Button.builder(panelLabel(), b -> {
+			TaskHud.expanded = !TaskHud.expanded;
+			b.setMessage(panelLabel());
+		}).bounds(x0, y, bw, 20).build());
+		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.close"), b -> onClose()).bounds(x0 + bw + 4, y, bw, 20).build());
+	}
+
+	private static Component panelLabel() {
+		return Component.translatable(TaskHud.expanded ? "gui.levelmod.hud.collapse" : "gui.levelmod.hud.expand");
 	}
 
 	@Override

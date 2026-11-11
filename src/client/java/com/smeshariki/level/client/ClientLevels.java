@@ -25,6 +25,10 @@ final class ClientLevels {
 	static boolean inLocations;
 	/** Открыто окно локаций (в том числе из выбора места): все локации подсвечены в мире. */
 	static boolean locationsOpen;
+	/** Сколько процентов отката мира сделано; -1 — отката нет. */
+	static int resetPercent = -1;
+	/** Реестр групп объектов (только у редактора). */
+	static List<LevelList.GroupInfo> groups = List.of();
 	static List<TaskArea> testAreas = List.of();
 	static List<LevelList.TaskInfo> testTasks = List.of();
 	static LevelList.Locations locations = LevelList.Locations.NONE;
@@ -50,6 +54,8 @@ final class ClientLevels {
 		testAreas = list.testAreas();
 		testTasks = list.testTasks();
 		locations = list.locations();
+		resetPercent = list.resetPercent();
+		groups = list.groups();
 		age = 0;
 	}
 
@@ -60,6 +66,8 @@ final class ClientLevels {
 		testAreas = List.of();
 		testTasks = List.of();
 		locations = LevelList.Locations.NONE;
+		resetPercent = -1;
+		groups = List.of();
 		shownLocation = null;
 		draftMission = null;
 		draft = null;
