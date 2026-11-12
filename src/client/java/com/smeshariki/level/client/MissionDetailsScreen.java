@@ -3,17 +3,18 @@ package com.smeshariki.level.client;
 import java.util.List;
 
 import com.smeshariki.level.net.LevelList;
+import com.smeshariki.ui.UiScreen;
+import com.smeshariki.ui.Ui;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
 /** «Подробнее» с экрана: текущая миссия идущих уровней игрока — описание, её задачи и ход всех миссий. */
-final class MissionDetailsScreen extends Screen {
-	private static final int W = 360, LINE = 11, WHITE = 0xFFFFFFFF, GRAY = 0xFFA0A0A0, GOLD = 0xFFFFD98A, GREEN = 0xFF6FBF73, YELLOW = 0xFFFFE066;
+final class MissionDetailsScreen extends UiScreen {
+	private static final int W = 360, LINE = 11, WHITE = Ui.TEXT, GRAY = Ui.HINT, GOLD = 0xFFFFD98A, GREEN = 0xFF6FBF73, YELLOW = 0xFFFFE066;
 
 	MissionDetailsScreen() {
 		super(Component.translatable("gui.levelmod.details"));
@@ -31,11 +32,6 @@ final class MissionDetailsScreen extends Screen {
 
 	private static Component panelLabel() {
 		return Component.translatable(TaskHud.expanded ? "gui.levelmod.hud.collapse" : "gui.levelmod.hud.expand");
-	}
-
-	@Override
-	public boolean isPauseScreen() {
-		return false;
 	}
 
 	@Override

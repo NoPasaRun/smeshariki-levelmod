@@ -9,13 +9,16 @@ import com.google.gson.JsonObject;
 import com.smeshariki.gameplay.character.Possession;
 import com.smeshariki.level.definition.LevelEvent;
 import com.smeshariki.level.net.LevelTestTask;
+import com.smeshariki.ui.SelectScreen;
+import com.smeshariki.ui.CardList;
+import com.smeshariki.ui.Ui;
+import com.smeshariki.ui.UiScreen;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -27,15 +30,16 @@ import net.minecraft.world.entity.EntityType;
  * Меню миссий и задач, устроено как окно уровней: слева миссии с их задачами, справа выбранное. Логику длинных уровней удобнее писать в файле;
  * это меню нужно прежде всего для того, что делается в мире: границы и проверка.
  */
-final class TaskEditorScreen extends Screen {
+final class TaskEditorScreen extends UiScreen {
 	private static final int MARGIN = 8, LIST_W = 150, CARD_H = 32, ROW = 24, H = 20, LINE = 11;
-	private static final int WHITE = 0xFFFFFFFF, GRAY = 0xFFA0A0A0, RED = 0xFFFF6060;
-	private static final int CARD = 0x60000000, CARD_HOVER = 0x80202020, CARD_SELECTED = 0xA0304050;
+	private static final int WHITE = Ui.TEXT, GRAY = Ui.HINT, RED = Ui.BAD;
 
 	private final LevelDraft level;
 	private Component problem;
-	private int listScroll;
+	private final CardList cards = new CardList(CARD_H, 2);
 	private boolean testing;
+	/** Первое нажатие «Удалить» только спрашивает: миссия уходит со всеми задачами. */
+	private boolean confirmDelete;
 
 	TaskEditorScreen(LevelDraft level) {
 		super(Component.translatable("gui.levelmod.tasks.menu", level.title.isBlank() ? "…" : level.title));
@@ -66,6 +70,7 @@ final class TaskEditorScreen extends Screen {
 	private void select(LevelDraft.MissionDraft mission, TaskDraft task) {
 		ClientLevels.draftMission = mission;
 		ClientLevels.draftTask = task;
+		confirmDelete = false;
 		problem = null;
 		rebuildWidgets();
 	}
@@ -80,6 +85,7 @@ final class TaskEditorScreen extends Screen {
 
 	@Override
 	protected void init() {
+		cards.layout(MARGIN, listTop(), LIST_W, listBottom());
 		testing = ClientLevels.testing;
 		if (mission() == null || !level.missions.contains(mission())) ClientLevels.draftMission = level.missions.isEmpty() ? null : level.missions.getFirst();
 		int bottom = height - MARGIN - H;
@@ -97,7 +103,13 @@ final class TaskEditorScreen extends Screen {
 		if (selected == null) return;
 		addRenderableWidget(Button.builder(Component.translatable(testing ? "gui.levelmod.task.test.stop" : "gui.levelmod.task.test"), b -> test(selected, task)).bounds(x, bottom, third, H)
 				.tooltip(Tooltip.create(Component.translatable(testing ? "gui.levelmod.task.test.stop" : "gui.levelmod.task.test.hint"))).build());
-		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.task.delete"), b -> {
+		addRenderableWidget(Button.builder(Component.translatable(confirmDelete ? "gui.levelmod.delete.confirm" : "gui.levelmod.task.delete"), b -> {
+			if (!confirmDelete) {
+				confirmDelete = true;
+				rebuildWidgets();
+				return;
+			}
+			confirmDelete = false;
 			if (task != null) level.removeTask(task);
 			else level.removeMission(selected);
 			select(task != null ? selected : null, null);
@@ -291,38 +303,30 @@ final class TaskEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean isPauseScreen() {
-		return false;
-	}
-
-	@Override
 	public void tick() {
 		super.tick();
-		if (testing != ClientLevels.testing) rebuildWidgets();
+		if (testing != ClientLevels.testing && !isEditing()) rebuildWidgets();
 	}
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0 && event.x() >= MARGIN && event.x() < MARGIN + LIST_W && event.y() >= listTop() && event.y() < listBottom()) {
-			int row = ((int) event.y() - listTop() + listScroll) / CARD_H;
-			List<Row> rows = rows();
-			if (row >= 0 && row < rows.size()) {
-				select(rows.get(row).mission(), rows.get(row).task());
-				return true;
-			}
+		List<Row> rows = rows();
+		int row = cards.rowAt(event.x(), event.y(), rows.size());
+		if (event.button() == 0 && row >= 0) {
+			select(rows.get(row).mission(), rows.get(row).task());
+			return true;
 		}
 		return super.mouseClicked(event, doubleClick);
 	}
 
 	@Override
 	public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-		if (x < MARGIN + LIST_W) listScroll = Math.max(0, Math.min(listScroll - (int) Math.signum(scrollY) * LINE * 2, Math.max(0, rows().size() * CARD_H - (listBottom() - listTop()))));
+		cards.wheel(x, scrollY, rows().size(), LINE * 2);
 		return true;
 	}
 
 	private FormattedCharSequence firstLine(Component text, int w) {
-		List<FormattedCharSequence> lines = font.split(text, Math.max(1, w));
-		return lines.isEmpty() ? FormattedCharSequence.EMPTY : lines.getFirst();
+		return Ui.firstLine(font, text, w);
 	}
 
 	@Override
@@ -340,24 +344,18 @@ final class TaskEditorScreen extends Screen {
 	}
 
 	private void drawList(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-		int top = listTop(), bottom = listBottom();
-		g.enableScissor(MARGIN, top, MARGIN + LIST_W, bottom);
 		List<Row> rows = rows();
-		for (int i = 0; i < rows.size(); i++) {
+		cards.draw(g, rows.size(), mouseX, mouseY, (i, y, hover) -> {
 			TaskDraft task = rows.get(i).task();
 			LevelDraft.MissionDraft mission = rows.get(i).mission();
-			int y = top + i * CARD_H - listScroll;
-			if (y + CARD_H <= top || y >= bottom) continue;
-			boolean hover = mouseX >= MARGIN && mouseX < MARGIN + LIST_W && mouseY >= Math.max(y, top) && mouseY < Math.min(y + CARD_H - 2, bottom);
 			boolean chosen = mission == mission() && task == task();
-			g.fill(MARGIN + (task == null ? 0 : 8), y, MARGIN + LIST_W, y + CARD_H - 2, chosen ? CARD_SELECTED : hover ? CARD_HOVER : CARD);
+			cards.background(g, MARGIN + (task == null ? 0 : 8), y, chosen, hover);
 			if (task == null) {
 				g.text(font, firstLine(Component.translatable("gui.levelmod.mission.number", level.missions.indexOf(mission) + 1, mission.title.isBlank() ? mission.id : mission.title), LIST_W - 8), MARGIN + 4, y + 11, 0xFF80C0FF);
-				continue;
+				return;
 			}
 			g.text(font, firstLine(Component.literal(task.title.isBlank() ? task.id : task.title), LIST_W - 16), MARGIN + 12, y + 5, WHITE);
-			g.text(font, firstLine(Component.translatable("gui.levelmod.task.type." + task.type), LIST_W - 16), MARGIN + 12, y + 17, task.area.isEmpty() ? GRAY : 0xFFFFD040);
-		}
-		g.disableScissor();
+			g.text(font, firstLine(Component.translatable("gui.levelmod.task.type." + task.type), LIST_W - 16), MARGIN + 12, y + 17, task.area.isEmpty() ? GRAY : Ui.ACCENT);
+		});
 	}
 }

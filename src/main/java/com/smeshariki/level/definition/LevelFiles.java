@@ -47,7 +47,7 @@ public final class LevelFiles {
 
 	/** Папка уровней. */
 	public static Path dir(MinecraftServer server) {
-		return server.getServerDirectory().resolve("levelmod").resolve("levels");
+		return com.smeshariki.level.ModData.moved(com.smeshariki.level.ModData.game("levelmod", "levels"), com.smeshariki.level.ModData.dir().resolve("levels"));
 	}
 
 	private static Path fileOf(MinecraftServer server, Identifier id) {

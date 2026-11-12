@@ -61,7 +61,7 @@ final class TaskHud {
 		int y = chip(g, mc.font, running) + GAP;
 		if (!ClientLevels.testTasks.isEmpty()) y = panel(g, mc.font, y, Component.translatable("gui.levelmod.hud.test", ""), null, -1, 0, ClientLevels.testTasks);
 		if (!expanded && !running.isEmpty()) y = currentTask(g, mc.font, y, running.get(0));
-		if (expanded) for (LevelList.LevelInfo level : running) y = panel(g, mc.font, y, level.title(), level.missions().isEmpty() ? null : level.missions(), currentMission(level.tasks()), level.missions().size(), level.tasks());
+		if (expanded) for (LevelList.LevelInfo level : running) if (y < g.guiHeight() - 70) y = panel(g, mc.font, y, level.title(), level.missions().isEmpty() ? null : level.missions(), currentMission(level.tasks()), level.missions().size(), level.tasks());
 	}
 
 	/** В свёрнутом виде: одна текущая задача игрока (начатая, а если таких нет — первая невыполненная). */
@@ -115,6 +115,12 @@ final class TaskHud {
 			List<FormattedCharSequence> lines = font.split(Component.literal(mark).append(titleOf(task)).append(counter), textW);
 			for (FormattedCharSequence line : lines) rows.add(new Row(line, color));
 		}
+		// не выше низа экрана (под ним хотбар и чат): лишние строки заменяет «…»
+		int room = (g.guiHeight() - 60 - y - PAD - LINE - header.size() * LINE - (header.isEmpty() ? 0 : 2) - PAD + 2) / LINE;
+		if (room >= 1 && rows.size() > room) {
+			rows = new ArrayList<>(rows.subList(0, room - 1));
+			rows.add(new Row(Component.literal("…").getVisualOrderText(), WAITING));
+		}
 		int height = PAD + LINE + header.size() * LINE + (header.isEmpty() ? 0 : 2) + rows.size() * LINE + PAD - 2;
 		int x = MARGIN;
 		rounded(g, x, y, x + WIDTH, y + height, PANEL);
@@ -155,8 +161,9 @@ final class TaskHud {
 		rounded(g, x + 2, y + 2, x + 2 + keyW, y + h - 2, KEY);
 		g.text(font, key, x + 6, y + 4, 0xFFFFFFFF);
 		g.text(font, label, x + keyW + 8, y + 4, 0xFFD0D6DE);
-		if (!running.isEmpty()) {
-			Component arrowKey = LevelModClient.TOGGLE_ARROW.getTranslatedKeyMessage(), arrowLabel = Component.translatable("gui.levelmod.hud.arrow");
+		// рядом с кнопкой уровней или уровня, пока у стрелки есть цель (в уровне и в проверке): клавиша прячет её и возвращает
+		if (GuideArrow.available()) {
+			Component arrowKey = LevelModClient.TOGGLE_ARROW.getTranslatedKeyMessage(), arrowLabel = Component.translatable(GuideArrow.hidden ? "gui.levelmod.hud.arrow.show" : "gui.levelmod.hud.arrow.hide");
 			int akW = font.width(arrowKey) + 8, alW = font.width(arrowLabel), ax = x + keyW + labelW + 14 + 4;
 			rounded(g, ax, y, ax + akW + alW + 14, y + h, BUTTON);
 			rounded(g, ax + 2, y + 2, ax + 2 + akW, y + h - 2, KEY);

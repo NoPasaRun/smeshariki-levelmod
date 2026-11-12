@@ -1,287 +1,540 @@
 {
-	"title": "Большое маленькое приключение",
-	"description": "Крош и Ежик договорились отправиться в приключение до руин, чтобы оставить послание потомкам",
-	"order": 0,
-	"max_players": 2,
-	"characters": [
-		"gameplaymod:krosh_tailed",
-		"gameplaymod:yozhik"
-	],
-	"character_starts": {
-		"gameplaymod:yozhik": "@дом_ежика",
-		"gameplaymod:krosh_tailed": "@дом_кроша"
-	},
-	"missions": [
-		{
-			"id": "morning",
-			"title": "С добрым утром",
-			"description": "Сделайте свои дела и поговрите с другом",
-			"checkpoints": [
-				{"at": "@дом_кроша", "character": "gameplaymod:krosh_tailed"},
-				{"at": "@дом_ежика", "character": "gameplaymod:yozhik"},
-				"@остров"
-			],
-			"tasks": [
-				{
-					"id": "k_take",
-					"title": "Взять лопату и шкатулку",
-					"character": "gameplaymod:krosh_tailed",
-					"type": "condition",
-					"conditions": [
-						{"check": "levelmod:has_item", "item": "#minecraft:shovels"},
-						{"check": "levelmod:has_item", "item": "minecraft:paper", "model": "levelmod:shovel_box"}
-					]
-				},
-				{
-					"id": "k_water",
-					"title": "Принять водные процедуры",
-					"character": "gameplaymod:krosh_tailed",
-					"type": "condition",
-					"conditions": [
-						{"check": "gameplaymod:in_water"}
-					]
-				},
-				{
-					"id": "k_talk",
-					"title": "Поговорить с Ёжиком насчёт шкатулки",
-					"character": "gameplaymod:krosh_tailed",
-					"after": ["k_take", "k_water"],
-					"type": "talk",
-					"with": "gameplaymod:yozhik",
-					"text": "Ёжик, привет! Хватит расчесывать иголки и выходи!"
-				},
-				{
-					"id": "y_ready",
-					"title": "Надеть очки и взять уголь (минимум 5)",
-					"character": "gameplaymod:yozhik",
-					"type": "condition",
-					"conditions": [
-						{"check": "gameplaymod:wearing", "item": "gameplaymod:glasses"},
-						{"check": "levelmod:has_item", "item": "minecraft:coal", "count": 5}
-					]
-				},
-				{
-					"id": "y_tarzan",
-					"title": "Раздобыть верёвку",
-					"character": "gameplaymod:yozhik",
-					"optional": true,
-					"type": "get_item",
-					"item": "gameplaymod:tarzan_rope",
-					"count": 1
-				},
-				{
-					"id": "y_talk",
-					"title": "Поговорить с Крошем",
-					"character": "gameplaymod:yozhik",
-					"after": ["y_ready"],
-					"type": "talk",
-					"with": "gameplaymod:krosh_tailed",
-					"text": "Привет, Крош. Да, идем. Сейчас, я иголки расчешу."
-				}
-			]
-		},
-		{
-			"id": "flight",
-			"reset_wait": 3,
-			"title": "От винта",
-			"description": "Отправляйтесь в путешествие на воздушном шаре",
-			"gear": {"gameplaymod:yozhik": "gameplaymod:glasses"},
-			"orders": [
-				{"text": "Крош, бери стропу высоты!", "character": "gameplaymod:krosh_tailed", "order": "behaviormod:take_rope", "kind": "lift", "group": "flight"},
-				{"text": "Крош, выше!", "character": "gameplaymod:krosh_tailed", "order": "behaviormod:balloon_lift", "steps": 1, "keep": true},
-				{"text": "Крош, ниже!", "character": "gameplaymod:krosh_tailed", "order": "behaviormod:balloon_lift", "steps": -1, "keep": true},
-				{"text": "Крош, стой!", "character": "gameplaymod:krosh_tailed", "order": "behaviormod:stop"},
-				{"text": "Ёжик, бери руль!", "character": "gameplaymod:yozhik", "order": "behaviormod:take_rope", "kind": "helm", "group": "flight"},
-				{"text": "Ёжик, вперёд!", "character": "gameplaymod:yozhik", "order": "behaviormod:balloon_helm", "dir": "forward", "keep": true},
-				{"text": "Ёжик, назад!", "character": "gameplaymod:yozhik", "order": "behaviormod:balloon_helm", "dir": "back", "keep": true},
-				{"text": "Ёжик, левее!", "character": "gameplaymod:yozhik", "order": "behaviormod:balloon_helm", "dir": "left", "keep": true},
-				{"text": "Ёжик, правее!", "character": "gameplaymod:yozhik", "order": "behaviormod:balloon_helm", "dir": "right", "keep": true},
-				{"text": "Ёжик, стой!", "character": "gameplaymod:yozhik", "order": "behaviormod:stop"},
-				{"text": "За мной!", "order": "behaviormod:follow"}
-			],
-			"checkpoints": ["@остров", "@засада_туземцев"],
-			"area": "@шар",
-			"tasks": [
-				{
-					"id": "k_to_balloon",
-					"title": "Дойти до воздушного шара",
-					"character": "gameplaymod:krosh_tailed",
-					"area": "@остров",
-					"type": "reach_area",
-					"target": "@шар"
-				},
-				{
-					"id": "k_lift",
-					"together": false,
-					"title": "Залезть в шар и взять стропу «вверх/вниз»",
-					"character": "gameplaymod:krosh_tailed",
-					"after": ["k_to_balloon"],
-					"type": "condition",
-					"conditions": [
-						{"check": "gameplaymod:holding_rope", "kind": "lift", "group": "flight"}
-					]
-				},
-				{
-					"id": "k_jungle",
-					"title": "Пересеките джунгли",
-					"character": "gameplaymod:krosh_tailed",
-					"after": ["k_lift"],
-					"type": "condition",
-					"conditions": [
-						{"check": "levelmod:in_area", "area": "@засада_туземцев"}
-					]
-				},
-				{
-					"id": "y_to_balloon",
-					"title": "Дойти до воздушного шара",
-					"character": "gameplaymod:yozhik",
-					"area": "@остров",
-					"type": "reach_area",
-					"target": "@шар"
-				},
-				{
-					"id": "y_helm",
-					"together": false,
-					"title": "Взять стропу «вправо/влево, поворот» и залезть в шар",
-					"character": "gameplaymod:yozhik",
-					"after": ["y_to_balloon"],
-					"type": "condition",
-					"conditions": [
-						{"check": "gameplaymod:holding_rope", "kind": "helm", "group": "flight"}
-					]
-				},
-				{
-					"id": "y_jungle",
-					"title": "Пересеките джунгли",
-					"character": "gameplaymod:yozhik",
-					"after": ["y_helm"],
-					"type": "condition",
-					"conditions": [
-						{"check": "levelmod:in_area", "area": "@засада_туземцев"}
-					]
-				}
-			]
-		},
-		{
-			"id": "jungle",
-			"guide": "@бездна",
-			"reset_wait": 3,
-			"title": "Баломут и обормот",
-			"description": "Не дайте погибнуть другу и сами не погибайте",
-			"gear": {"gameplaymod:yozhik": "gameplaymod:glasses"},
-			"checkpoints": ["@засада_туземцев", {"at": "@пещера_старт", "max_y": 0}],
-			"tasks": [
-				{
-					"id": "k_escape",
-					"title": "Выбраться из джунглей",
-					"area": "@джунгли",
-					"character": "gameplaymod:krosh_tailed",
-					"type": "condition",
-					"conditions": [
-						{"check": "levelmod:in_area", "area": "@пещера_старт", "max_y": 0}
-					]
-				},
-				{
-					"id": "y_escape",
-					"title": "Выбраться из джунглей",
-					"area": "@джунгли",
-					"character": "gameplaymod:yozhik",
-					"type": "condition",
-					"conditions": [
-						{"check": "levelmod:in_area", "area": "@пещера_старт", "max_y": 0}
-					]
-				}
-			]
-		},
-		{
-			"id": "cave",
-			"reset_wait": 5,
-			"title": "Верь в меня, Ёжик",
-			"description": "В жерле вулкана вам не место, выбирайтесь скорее",
-			"gear": {"gameplaymod:yozhik": "gameplaymod:glasses"},
-			"checkpoints": ["@пещера_старт", "@бухта"],
-			"area": "@лавовое_озеро",
-			"tasks": [
-				{
-					"id": "k_cave",
-					"title": "Выбраться из пещеры с лавой",
-					"character": "gameplaymod:krosh_tailed",
-					"type": "reach_area",
-					"target": "@бухта"
-				},
-				{
-					"id": "y_cave",
-					"title": "Выбраться из пещеры с лавой",
-					"character": "gameplaymod:yozhik",
-					"type": "reach_area",
-					"target": "@бухта"
-				}
-			]
-		},
-		{
-			"id": "chase",
-			"reset_wait": 3,
-			"title": "Погоня",
-			"description": "Скорее, скорее, скорее, обгоните друга, чтобы не прослыть аутсайдером",
-			"gear": {"gameplaymod:yozhik": "gameplaymod:glasses"},
-			"checkpoints": ["@бухта", "@руины"],
-			"tasks": [
-				{
-					"id": "k_ruins",
-					"title": "Добежать до руин",
-					"character": "gameplaymod:krosh_tailed",
-					"type": "reach_area",
-					"target": "@руины"
-				},
-				{
-					"id": "y_ruins",
-					"title": "Добежать до руин",
-					"character": "gameplaymod:yozhik",
-					"type": "reach_area",
-					"target": "@руины"
-				}
-			]
-		}
-	],
-	"triggers": [
-		{
-			"when": "gameplaymod:balloon_stranded:flight",
-			"repeat": true,
-			"then": {"action": "say", "overlay": true, "text": "Шар сел без топлива: заправьте стропу высоты, иначе через 10 секунд полёт начнётся заново"}
-		},
-		{
-			"when": "gameplaymod:balloon_stranded:flight",
-			"repeat": true,
-			"delay": 200,
-			"unless": "gameplaymod:balloon_lifted:flight",
-			"then": [
-				{"action": "fail_task", "task": "k_jungle"},
-				{"action": "fail_task", "task": "y_jungle"}
-			]
-		},
-		{"when": "task_reset:k_jungle", "repeat": true, "then": {"action": "fail_task", "task": "y_jungle"}},
-		{"when": "task_reset:y_jungle", "repeat": true, "then": {"action": "fail_task", "task": "k_jungle"}},
-		{"when": "mission_completed:flight", "then": {"action": "gameplaymod:destroy", "group": "flight"}},
-		{
-			"when": "mission_started:jungle",
-			"then": [
-				{"action": "gameplaymod:autorun"},
-				{"action": "gameplaymod:arrows", "group": "погоня"}
-			]
-		},
-		{"when": "mission_started:cave", "delay": 100, "unless": "mission_reset:cave", "then": {"action": "gameplaymod:lava_wave", "group": "lava1"}},
-		{"when": "mission_resumed:cave", "repeat": true, "delay": 200, "unless": "mission_reset:cave", "then": {"action": "gameplaymod:lava_wave", "group": "lava1"}},
-		{"when": "task_reset:k_cave", "repeat": true, "then": {"action": "fail_task", "task": "y_cave"}},
-		{"when": "task_reset:y_cave", "repeat": true, "then": {"action": "fail_task", "task": "k_cave"}},
-		{"when": "gameplaymod:lava_wave_finished:lava1", "repeat": true, "then": {"action": "gameplaymod:lava_wave", "group": "lava2"}},
-		{"when": "gameplaymod:lava_wave_finished:lava2", "repeat": true, "then": {"action": "gameplaymod:lava_wave", "group": "lava3"}},
-		{"when": "gameplaymod:lava_wave_finished:lava3", "repeat": true, "then": {"action": "gameplaymod:lava_wave", "group": "lava4"}},
-		{
-			"when": "mission_completed:jungle",
-			"then": [
-				{"action": "gameplaymod:autorun", "on": false},
-				{"action": "gameplaymod:arrows", "group": "погоня", "on": false}
-			]
-		}
-	]
+  "kind": "story",
+  "title": "Большое маленькое приключение",
+  "description": "Крош и Ежик договорились отправиться в приключение до руин, чтобы оставить послание потомкам",
+  "min_players": 1,
+  "max_players": 2,
+  "order": 0,
+  "characters": [
+    "gameplaymod:krosh_tailed",
+    "gameplaymod:yozhik"
+  ],
+  "character_starts": {
+    "gameplaymod:yozhik": "@дом_ежика",
+    "gameplaymod:krosh_tailed": "@дом_кроша"
+  },
+  "missions": [
+    {
+      "id": "morning",
+      "title": "С добрым утром",
+      "description": "Сделайте свои дела и поговрите с другом",
+      "tasks": [
+        {
+          "id": "k_take",
+          "title": "Взять лопату и шкатулку",
+          "scope": "team",
+          "character": "gameplaymod:krosh_tailed",
+          "type": "condition",
+          "conditions": [
+            {
+              "check": "levelmod:has_item",
+              "item": "#minecraft:shovels"
+            },
+            {
+              "check": "levelmod:has_item",
+              "item": "minecraft:paper",
+              "model": "levelmod:shovel_box"
+            }
+          ]
+        },
+        {
+          "id": "k_water",
+          "title": "Принять водные процедуры",
+          "scope": "team",
+          "character": "gameplaymod:krosh_tailed",
+          "type": "condition",
+          "conditions": [
+            {
+              "check": "gameplaymod:in_water"
+            }
+          ]
+        },
+        {
+          "id": "k_talk",
+          "title": "Поговорить с Ёжиком насчёт шкатулки",
+          "scope": "team",
+          "character": "gameplaymod:krosh_tailed",
+          "after": [
+            "k_take",
+            "k_water"
+          ],
+          "type": "talk",
+          "with": "gameplaymod:yozhik",
+          "text": "Опять эти твои... авантюры. Ну давай, вперед."
+        },
+        {
+          "id": "y_ready",
+          "title": "Надеть очки и взять уголь (минимум 5)",
+          "scope": "team",
+          "character": "gameplaymod:yozhik",
+          "type": "condition",
+          "conditions": [
+            {
+              "check": "gameplaymod:wearing",
+              "item": "gameplaymod:glasses"
+            },
+            {
+              "check": "levelmod:has_item",
+              "item": "minecraft:coal",
+              "count": 5
+            }
+          ]
+        },
+        {
+          "id": "y_tarzan",
+          "title": "Раздобыть верёвку",
+          "scope": "team",
+          "character": "gameplaymod:yozhik",
+          "optional": true,
+          "type": "get_item",
+          "item": "gameplaymod:tarzan_rope",
+          "count": 1
+        },
+        {
+          "id": "y_talk",
+          "title": "Поговорить с Крошем",
+          "scope": "team",
+          "character": "gameplaymod:yozhik",
+          "start_on": "task_completed:y_ready",
+          "type": "talk",
+          "with": "gameplaymod:krosh_tailed",
+          "text": "Сколько можно иголки расчесывать!? Пойдем, пойдем!!"
+        }
+      ],
+      "checkpoints": [
+        {
+          "at": "@дом_кроша",
+          "character": "gameplaymod:krosh_tailed"
+        },
+        {
+          "at": "@дом_ежика",
+          "character": "gameplaymod:yozhik"
+        },
+        "@остров"
+      ]
+    },
+    {
+      "id": "flight",
+      "title": "От винта",
+      "description": "Отправляйтесь в путешествие на воздушном шаре",
+      "tasks": [
+        {
+          "id": "k_to_balloon",
+          "title": "Дойти до воздушного шара",
+          "scope": "team",
+          "character": "gameplaymod:krosh_tailed",
+          "area": "@остров",
+          "type": "reach_area",
+          "target": "@шар"
+        },
+        {
+          "id": "k_lift",
+          "title": "Залезть в шар и взять стропу «вверх/вниз»",
+          "scope": "team",
+          "character": "gameplaymod:krosh_tailed",
+          "start_on": "task_completed:k_to_balloon",
+          "type": "condition",
+          "conditions": [
+            {
+              "check": "gameplaymod:holding_rope",
+              "kind": "lift",
+              "group": "flight"
+            }
+          ],
+          "together": false
+        },
+        {
+          "id": "k_jungle",
+          "title": "Пересеките джунгли",
+          "scope": "team",
+          "character": "gameplaymod:krosh_tailed",
+          "start_on": "task_completed:k_lift",
+          "type": "condition",
+          "conditions": [
+            {
+              "check": "levelmod:in_area",
+              "area": "@засада_туземцев"
+            }
+          ]
+        },
+        {
+          "id": "y_to_balloon",
+          "title": "Дойти до воздушного шара",
+          "scope": "team",
+          "character": "gameplaymod:yozhik",
+          "area": "@остров",
+          "type": "reach_area",
+          "target": "@шар"
+        },
+        {
+          "id": "y_helm",
+          "title": "Взять стропу «вправо/влево, поворот» и залезть в шар",
+          "scope": "team",
+          "character": "gameplaymod:yozhik",
+          "start_on": "task_completed:y_to_balloon",
+          "type": "condition",
+          "conditions": [
+            {
+              "check": "gameplaymod:holding_rope",
+              "kind": "helm",
+              "group": "flight"
+            }
+          ],
+          "together": false
+        },
+        {
+          "id": "y_jungle",
+          "title": "Пересеките джунгли",
+          "scope": "team",
+          "character": "gameplaymod:yozhik",
+          "start_on": "task_completed:y_helm",
+          "type": "condition",
+          "conditions": [
+            {
+              "check": "levelmod:in_area",
+              "area": "@засада_туземцев"
+            }
+          ]
+        }
+      ],
+      "checkpoints": [
+        "@южный_регион_острова",
+        "@шар",
+        "@засада_туземцев"
+      ],
+      "area": "@шар",
+      "orders": [
+        {
+          "text": "Крош, бери стропу высоты!",
+          "character": "gameplaymod:krosh_tailed",
+          "order": "behaviormod:take_rope",
+          "kind": "lift",
+          "group": "flight"
+        },
+        {
+          "text": "Крош, выше!",
+          "character": "gameplaymod:krosh_tailed",
+          "order": "behaviormod:balloon_lift",
+          "steps": 1,
+          "keep": true
+        },
+        {
+          "text": "Крош, ниже!",
+          "character": "gameplaymod:krosh_tailed",
+          "order": "behaviormod:balloon_lift",
+          "steps": -1,
+          "keep": true
+        },
+        {
+          "text": "Крош, стой!",
+          "character": "gameplaymod:krosh_tailed",
+          "order": "behaviormod:stop"
+        },
+        {
+          "text": "Ёжик, бери руль!",
+          "character": "gameplaymod:yozhik",
+          "order": "behaviormod:take_rope",
+          "kind": "helm",
+          "group": "flight"
+        },
+        {
+          "text": "Ёжик, вперёд!",
+          "character": "gameplaymod:yozhik",
+          "order": "behaviormod:balloon_helm",
+          "dir": "forward",
+          "keep": true
+        },
+        {
+          "text": "Ёжик, назад!",
+          "character": "gameplaymod:yozhik",
+          "order": "behaviormod:balloon_helm",
+          "dir": "back",
+          "keep": true
+        },
+        {
+          "text": "Ёжик, левее!",
+          "character": "gameplaymod:yozhik",
+          "order": "behaviormod:balloon_helm",
+          "dir": "left",
+          "keep": true
+        },
+        {
+          "text": "Ёжик, правее!",
+          "character": "gameplaymod:yozhik",
+          "order": "behaviormod:balloon_helm",
+          "dir": "right",
+          "keep": true
+        },
+        {
+          "text": "Ёжик, стой!",
+          "character": "gameplaymod:yozhik",
+          "order": "behaviormod:stop"
+        },
+        {
+          "text": "За мной!",
+          "order": "behaviormod:follow"
+        }
+      ],
+      "gear": {
+        "gameplaymod:yozhik": "gameplaymod:glasses"
+      },
+      "reset_wait": 3
+    },
+    {
+      "id": "jungle",
+      "title": "Баломут и обормот",
+      "description": "Не дайте погибнуть другу и сами не погибайте",
+      "tasks": [
+        {
+          "id": "k_escape",
+          "title": "Выбраться из джунглей",
+          "scope": "team",
+          "character": "gameplaymod:krosh_tailed",
+          "area": "@джунгли",
+          "type": "condition",
+          "conditions": [
+            {
+              "check": "levelmod:in_area",
+              "area": "@пещера_старт",
+              "max_y": 0
+            }
+          ]
+        },
+        {
+          "id": "y_escape",
+          "title": "Выбраться из джунглей",
+          "scope": "team",
+          "character": "gameplaymod:yozhik",
+          "area": "@джунгли",
+          "type": "condition",
+          "conditions": [
+            {
+              "check": "levelmod:in_area",
+              "area": "@пещера_старт",
+              "max_y": 0
+            }
+          ]
+        }
+      ],
+      "checkpoints": [
+        "@засада_туземцев",
+        {
+          "at": "@пещера_старт",
+          "max_y": 0
+        }
+      ],
+      "gear": {
+        "gameplaymod:yozhik": "gameplaymod:glasses"
+      },
+      "reset_wait": 3,
+      "guide": "@бездна"
+    },
+    {
+      "id": "cave",
+      "title": "Верь в меня, Ёжик",
+      "description": "В жерле вулкана вам не место, выбирайтесь скорее",
+      "tasks": [
+        {
+          "id": "k_cave",
+          "title": "Выбраться из пещеры с лавой",
+          "scope": "team",
+          "character": "gameplaymod:krosh_tailed",
+          "type": "reach_area",
+          "target": "@бухта"
+        },
+        {
+          "id": "y_cave",
+          "title": "Выбраться из пещеры с лавой",
+          "scope": "team",
+          "character": "gameplaymod:yozhik",
+          "type": "reach_area",
+          "target": "@бухта"
+        }
+      ],
+      "checkpoints": [
+        "@пещера_старт",
+        "@уступ_в_пещере",
+        "@бухта"
+      ],
+      "area": "@лавовое_озеро",
+      "gear": {
+        "gameplaymod:yozhik": "gameplaymod:glasses"
+      },
+      "reset_wait": 5
+    },
+    {
+      "id": "chase",
+      "title": "Погоня",
+      "description": "Скорее, скорее, скорее, обгоните друга, чтобы не прослыть аутсайдером",
+      "tasks": [
+        {
+          "id": "k_ruins",
+          "title": "Добежать до руин",
+          "scope": "team",
+          "character": "gameplaymod:krosh_tailed",
+          "type": "reach_area",
+          "target": "@руины"
+        },
+        {
+          "id": "y_ruins",
+          "title": "Добежать до руин",
+          "scope": "team",
+          "character": "gameplaymod:yozhik",
+          "type": "reach_area",
+          "target": "@руины"
+        }
+      ],
+      "checkpoints": [
+        "@бухта",
+        "@руины"
+      ],
+      "gear": {
+        "gameplaymod:yozhik": "gameplaymod:glasses"
+      },
+      "reset_wait": 3
+    }
+  ],
+  "triggers": [
+    {
+      "when": "gameplaymod:balloon_stranded:flight",
+      "repeat": true,
+      "then": {
+        "action": "say",
+        "overlay": true,
+        "text": "Шар сел без топлива: заправьте стропу высоты, иначе через 10 секунд полёт начнётся заново"
+      }
+    },
+    {
+      "when": "gameplaymod:balloon_stranded:flight",
+      "repeat": true,
+      "delay": 200,
+      "unless": "gameplaymod:balloon_lifted:flight",
+      "then": [
+        {
+          "action": "fail_task",
+          "task": "k_jungle"
+        },
+        {
+          "action": "fail_task",
+          "task": "y_jungle"
+        }
+      ]
+    },
+    {
+      "when": "task_reset:k_jungle",
+      "repeat": true,
+      "then": {
+        "action": "fail_task",
+        "task": "y_jungle"
+      }
+    },
+    {
+      "when": "task_reset:y_jungle",
+      "repeat": true,
+      "then": {
+        "action": "fail_task",
+        "task": "k_jungle"
+      }
+    },
+    {
+      "when": "mission_started:jungle",
+      "then": [
+        {
+          "action": "gameplaymod:autorun"
+        },
+        {
+          "action": "gameplaymod:arrows",
+          "group": "погоня"
+        }
+      ]
+    },
+    {
+      "when": "task_reset:k_cave",
+      "repeat": true,
+      "then": {
+        "action": "fail_task",
+        "task": "y_cave"
+      }
+    },
+    {
+      "when": "task_reset:y_cave",
+      "repeat": true,
+      "then": {
+        "action": "fail_task",
+        "task": "k_cave"
+      }
+    },
+    {
+      "when": "mission_completed:jungle",
+      "then": [
+        {
+          "action": "gameplaymod:autorun",
+          "on": false
+        },
+        {
+          "action": "gameplaymod:arrows",
+          "group": "погоня",
+          "on": false
+        }
+      ]
+    },
+    {
+      "when": "level_started",
+      "then": {
+        "action": "play_cutscene",
+        "cutscene": "behaviormod:matsakn"
+      }
+    },
+    {
+      "when": "mission_completed:flight",
+      "unless": "task_reset:k_jungle",
+      "then": {
+        "action": "gameplaymod:destroy",
+        "group": "flight"
+      }
+    },
+    {
+      "when": "mission_started:cave",
+      "delay": 100,
+      "unless": "mission_reset:cave",
+      "then": {
+        "action": "gameplaymod:lava_wave",
+        "group": "lava1"
+      }
+    },
+    {
+      "when": "mission_resumed:cave",
+      "delay": 200,
+      "unless": "mission_reset:cave",
+      "repeat": true,
+      "then": {
+        "action": "gameplaymod:lava_wave",
+        "group": "lava1"
+      }
+    },
+    {
+      "when": "gameplaymod:lava_wave_finished:lava1",
+      "repeat": true,
+      "then": {
+        "action": "gameplaymod:lava_wave",
+        "group": "lava2"
+      }
+    },
+    {
+      "when": "gameplaymod:lava_wave_finished:lava2",
+      "repeat": true,
+      "then": {
+        "action": "gameplaymod:lava_wave",
+        "group": "lava3"
+      }
+    },
+    {
+      "when": "gameplaymod:lava_wave_finished:lava3",
+      "repeat": true,
+      "then": {
+        "action": "gameplaymod:lava_wave",
+        "group": "lava4"
+      }
+    }
+  ]
 }

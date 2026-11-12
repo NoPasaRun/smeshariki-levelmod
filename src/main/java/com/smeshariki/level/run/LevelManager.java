@@ -232,7 +232,10 @@ public final class LevelManager {
 			"gameplaymod:krosh_tailed", "дом_кроша",
 			"gameplaymod:yozhik", "дом_ежика",
 			"gameplaymod:karych", "дом_карыча",
-			"gameplaymod:losyash", "дом_лосяша");
+			"gameplaymod:losyash", "дом_лосяша",
+			"gameplaymod:nyusha", "дом_нюши",
+			"gameplaymod:barash", "дом_бараша",
+			"gameplaymod:sovunya", "дом_совуньи");
 
 	/** Смешарик участвует в идущем уровне: в нём участник или он напарник прогона. */
 	private static boolean inRunningLevel(MinecraftServer server, CharacterEntity c) {
@@ -942,10 +945,13 @@ public final class LevelManager {
 	/** Предел чанков одной области миссии, чтобы огромный контур не раздул отметки. */
 	private static final int TOUCH_AREA_CAP = 4096;
 
-	/** Запоминает чанки, где идёт уровень: откат мира возвращает только их (оптимизация, {@link WorldReset}). */
+	/** Запоминает чанки, где идёт уровень или проверка: откат мира возвращает только их (оптимизация, {@link WorldReset}). */
 	private static void trackChunks(MinecraftServer server, LevelStore store) {
 		if (server.getTickCount() % 10 != 0) return;
-		for (LevelRun run : store.runs()) {
+		List<LevelRun> running = new ArrayList<>(store.runs());
+		// проверка миссии или задачи тоже меняет мир (лава, шары, блоки), и после неё мир откатывается
+		running.addAll(TESTS.values());
+		for (LevelRun run : running) {
 			if (run.state() != LevelRun.State.RUNNING) continue;
 			for (LevelRun.Participant participant : run.participants()) {
 				ServerPlayer player = server.getPlayerList().getPlayer(participant.id());
@@ -1452,8 +1458,8 @@ public final class LevelManager {
 		@Override
 		public void publish(LevelRun run, LevelEvent event) {
 			if (!test) LevelEventCallback.EVENT.invoker().onEvent(run, event);
-			// конец любого уровня: блоки мира вернутся к сохранённой версии, когда закончатся все идущие прогоны
-			if (!test && (event.kind() == LevelEvent.Kind.LEVEL_COMPLETED || event.kind() == LevelEvent.Kind.LEVEL_ABANDONED)) WorldReset.request(server);
+			// конец любого уровня и проверки: блоки и сущности мира вернутся к сохранённой версии, когда закончатся все идущие прогоны
+			if ((event.kind() == LevelEvent.Kind.LEVEL_COMPLETED || event.kind() == LevelEvent.Kind.LEVEL_ABANDONED)) WorldReset.request(server);
 		}
 	}
 }

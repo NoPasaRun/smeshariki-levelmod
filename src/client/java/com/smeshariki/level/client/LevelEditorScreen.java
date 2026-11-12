@@ -9,6 +9,9 @@ import com.buildmod.client.OutlineDrawing;
 import com.smeshariki.gameplay.character.Possession;
 import com.smeshariki.level.definition.LevelKind;
 import com.smeshariki.level.net.LevelSave;
+import com.smeshariki.ui.SelectScreen;
+import com.smeshariki.ui.UiScreen;
+import com.smeshariki.ui.Ui;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
@@ -22,8 +25,8 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EntityType;
 
 /** Редактор уровня: название, описание, превью, число игроков, кат-сцена в начале. Задачи — в своём меню ({@link TaskEditorScreen}), правила механик — в {@link MechanicRulesScreen}. */
-final class LevelEditorScreen extends Screen {
-	private static final int W = 320, ROW = 24, H = 20;
+final class LevelEditorScreen extends UiScreen {
+	private static final int W_MAX = 320, ROW = 24, H = 20;
 	private static final int MAX_PLAYERS = 8;
 
 	private final LevelDraft draft;
@@ -79,6 +82,7 @@ final class LevelEditorScreen extends Screen {
 
 	@Override
 	protected void init() {
+		int W = Math.min(W_MAX, width - 8);
 		int x = (width - W) / 2, y = 22;
 		addRenderableWidget(field(this, font, x, y, W, "gui.levelmod.editor.title", draft.title, 64, v -> draft.title = v));
 		y += ROW;
@@ -103,7 +107,7 @@ final class LevelEditorScreen extends Screen {
 			rebuildWidgets();
 		}).bounds(x + 80, y, 78, H).build());
 		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.editor.intro", cutsceneName(draft.intro)),
-				b -> SelectScreen.open(this, Component.translatable("gui.levelmod.select.cutscene"), cutsceneOptions(), LevelEditorScreen::cutsceneName, draft.intro, c -> draft.intro = c)).bounds(x + 160, y, 160, H).build());
+				b -> SelectScreen.open(this, Component.translatable("gui.levelmod.select.cutscene"), cutsceneOptions(), LevelEditorScreen::cutsceneName, draft.intro, c -> draft.intro = c)).bounds(x + 160, y, W - 160, H).build());
 		y += ROW;
 		// никто не отмечен — подходит любой
 		var types = Possession.choices();
@@ -169,17 +173,12 @@ final class LevelEditorScreen extends Screen {
 	}
 
 	@Override
-	public boolean isPauseScreen() {
-		return false;
-	}
-
-	@Override
 	public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
 		super.extractRenderState(g, mouseX, mouseY, delta);
-		g.centeredText(font, title, width / 2, 8, 0xFFFFFFFF);
+		g.centeredText(font, title, width / 2, 8, Ui.TEXT);
 		int y = height - 30 - problems.size() * 11;
 		for (Component problem : problems) {
-			g.centeredText(font, problem, width / 2, y, 0xFFFF6060);
+			g.centeredText(font, problem, width / 2, y, Ui.BAD);
 			y += 11;
 		}
 	}

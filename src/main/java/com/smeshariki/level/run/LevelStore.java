@@ -159,7 +159,7 @@ public final class LevelStore extends SavedData {
 	private static final com.google.gson.Gson PLACES_GSON = new com.google.gson.GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
 	/**
-	 * Локации и реестр групп живут в файле {@code <папка игры>/levelmod/worlds/<папка мира>/places.json}: вне мира, поэтому откат версии мира их не трогает.
+	 * Локации и реестр групп живут в файле {@code <папка игры>/data/levelmod/worlds/<папка мира>/places.json}: вне мира, поэтому откат версии мира их не трогает.
 	 * Данные, лежавшие в {@code levels.dat}, переезжают один раз: сначала копия {@code levels.dat.pre_places.bak}, потом запись файла и проверка чтением;
 	 * только после этого из {@code levels.dat} они перестают писаться. Если файл не вышло записать или прочитать, всё остаётся как было.
 	 */
@@ -167,7 +167,18 @@ public final class LevelStore extends SavedData {
 		bound = true;
 		java.nio.file.Path world = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).toAbsolutePath().normalize();
 		String name = world.getFileName() == null ? "world" : world.getFileName().toString();
-		placesFile = server.getServerDirectory().resolve("levelmod").resolve("worlds").resolve(name).resolve("places.json");
+		placesFile = com.smeshariki.level.ModData.moved(com.smeshariki.level.ModData.game("levelmod", "worlds"), com.smeshariki.level.ModData.dir().resolve("worlds")).resolve(name).resolve("places.json");
+		// мир из архива (инструмент экспорта ManagementMod): локации лежат в самом мире, а у получателя файла по имени его папки ещё нет
+		java.nio.file.Path bundled = world.resolve("levelmod_places.json");
+		if (!java.nio.file.Files.exists(placesFile) && java.nio.file.Files.isRegularFile(bundled)) {
+			try {
+				java.nio.file.Files.createDirectories(placesFile.getParent());
+				java.nio.file.Files.copy(bundled, placesFile);
+				LevelMod.LOGGER.info("Локации и группы взяты из мира: {}", bundled);
+			} catch (java.io.IOException e) {
+				LevelMod.LOGGER.warn("Не удалось взять локации из {}", bundled, e);
+			}
+		}
 		try {
 			boolean legacy = !locationPoints.isEmpty() || !locationAreas.isEmpty() || !groups.isEmpty();
 			if (java.nio.file.Files.exists(placesFile)) {

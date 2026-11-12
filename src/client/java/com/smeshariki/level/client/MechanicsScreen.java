@@ -4,11 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.smeshariki.gameplay.client.ItemMechanics;
+import com.smeshariki.ui.UiScreen;
+import com.smeshariki.ui.Ui;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
@@ -17,9 +18,9 @@ import net.minecraft.world.item.ItemStack;
  * Окно «Описание механики» (клавиша {@link LevelModClient#MECHANICS}): карточка с предметом, который игрок использует, — название, краткое пояснение
  * и разделы «Как пользоваться», «Управление», «Особенности» (({@link ItemMechanics}, GameplayMod)). Высокий текст прокручивается колесом мыши. Мир за окном не замирает.
  */
-final class MechanicsScreen extends Screen {
+final class MechanicsScreen extends UiScreen {
 	private static final int PANEL_MAX_W = 430, MARGIN = 12, PAD = 16, LINE = 11, HEADER_H = 62, FOOT_H = 34, SCROLLBAR_W = 4;
-	private static final int PANEL = 0xF2141922, PANEL_EDGE = 0xFF334155, HEADER = 0xFF1C2431, GOLD = 0xFFFFC857, TITLE = 0xFFFFFFFF, MUTED = 0xFF8FA0B5;
+	private static final int PANEL = 0xF2141922, PANEL_EDGE = 0xFF334155, HEADER = 0xFF1C2431, GOLD = Ui.ACCENT, TITLE = Ui.TEXT, MUTED = 0xFF8FA0B5;
 	private static final int TEXT = 0xFFE3E8EF, SUMMARY_BG = 0xFF1E2A3A, SUMMARY_BAR = 0xFF4FA3FF, SLOT = 0xFF0E1218, SLOT_EDGE = 0xFF3C4A5E, TRACK = 0xFF232C39, THUMB = 0xFF5B6B80;
 
 	/** Строка прокручиваемого текста. */
@@ -99,11 +100,6 @@ final class MechanicsScreen extends Screen {
 
 	private int maxScroll() {
 		return Math.max(0, contentHeight - (bodyBottom - bodyTop));
-	}
-
-	@Override
-	public boolean isPauseScreen() {
-		return false;
 	}
 
 	@Override

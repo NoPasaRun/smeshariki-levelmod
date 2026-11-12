@@ -6,6 +6,9 @@ import java.util.Optional;
 
 import com.smeshariki.level.net.LevelList;
 import com.smeshariki.level.net.LevelLocationEdit;
+import com.smeshariki.ui.CardList;
+import com.smeshariki.ui.Ui;
+import com.smeshariki.ui.UiScreen;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -20,16 +23,15 @@ import net.minecraft.util.FormattedCharSequence;
  * Локации мира: именованные точки и области, на которые файлы уровней ссылаются как {@code "@имя"}. Слева сначала то, что уровни просят, а его нет,
  * потом уже отмеченное. Автор идёт на место, открывает окно, выбирает имя и ставит точку или рисует область.
  */
-final class LocationsScreen extends Screen {
+final class LocationsScreen extends UiScreen {
 	private static final int MARGIN = 8, LIST_W = 150, CARD_H = 16, H = 20, ROW = 24, LINE = 11;
-	private static final int WHITE = 0xFFFFFFFF, GRAY = 0xFFA0A0A0, RED = 0xFFFF6060, YELLOW = 0xFFFFD040, GREEN = 0xFF60D060;
-	private static final int CARD = 0x60000000, CARD_SELECTED = 0xA0304050;
+	private static final int WHITE = Ui.TEXT, GRAY = Ui.HINT, RED = Ui.BAD, YELLOW = Ui.ACCENT, GREEN = Ui.GOOD;
 
 	private static String name = "";
 
 	private final Screen parent;
 	private LevelList.Locations shown;
-	private int listScroll;
+	private final CardList cards = new CardList(CARD_H, 1);
 
 	LocationsScreen() {
 		this(null);
@@ -70,6 +72,7 @@ final class LocationsScreen extends Screen {
 
 	@Override
 	protected void init() {
+		cards.layout(MARGIN, 24, LIST_W, height - MARGIN);
 		shown = ClientLevels.locations;
 		LevelList.LocationInfo info = selected();
 		ClientLevels.shownLocation = info == null ? null : info.area().orElse(null);
@@ -109,33 +112,26 @@ final class LocationsScreen extends Screen {
 	}
 
 	@Override
-	public boolean isPauseScreen() {
-		return false;
-	}
-
-	@Override
 	public void tick() {
 		super.tick();
-		if (shown != ClientLevels.locations) rebuildWidgets();
+		if (shown != ClientLevels.locations && !isEditing()) rebuildWidgets();
 	}
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0 && event.x() >= MARGIN && event.x() < MARGIN + LIST_W && event.y() >= 24 && event.y() < height - MARGIN) {
-			int row = ((int) event.y() - 24 + listScroll) / CARD_H;
-			List<Row> rows = rows();
-			if (row >= 0 && row < rows.size()) {
-				name = rows.get(row).name();
-				rebuildWidgets();
-				return true;
-			}
+		List<Row> rows = rows();
+		int row = cards.rowAt(event.x(), event.y(), rows.size());
+		if (event.button() == 0 && row >= 0) {
+			name = rows.get(row).name();
+			rebuildWidgets();
+			return true;
 		}
 		return super.mouseClicked(event, doubleClick);
 	}
 
 	@Override
 	public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-		if (x < MARGIN + LIST_W) listScroll = Math.max(0, Math.min(listScroll - (int) Math.signum(scrollY) * CARD_H, Math.max(0, rows().size() * CARD_H - (height - MARGIN - 24))));
+		cards.wheel(x, scrollY, rows().size());
 		return true;
 	}
 
@@ -144,19 +140,15 @@ final class LocationsScreen extends Screen {
 		super.extractRenderState(g, mouseX, mouseY, delta);
 		g.text(font, title, MARGIN, 9, WHITE);
 		int top = 24, bottom = height - MARGIN;
-		g.enableScissor(MARGIN, top, MARGIN + LIST_W, bottom);
 		List<Row> rows = rows();
-		for (int i = 0; i < rows.size(); i++) {
+		cards.draw(g, rows.size(), mouseX, mouseY, (i, y, hover) -> {
 			Row row = rows.get(i);
-			int y = top + i * CARD_H - listScroll;
-			if (y + CARD_H <= top || y >= bottom) continue;
-			g.fill(MARGIN, y, MARGIN + LIST_W, y + CARD_H - 1, row.name().equals(name.trim()) ? CARD_SELECTED : CARD);
+			cards.background(g, MARGIN, y, row.name().equals(name.trim()), hover);
 			String mark = row.info() == null ? "! " : row.info().area().isPresent() ? "▭ " : "• ";
 			g.text(font, firstLine(Component.literal(mark + row.name()), LIST_W - 16), MARGIN + 3, y + 3, row.info() == null ? YELLOW : GREEN);
 			// цвет, которым эта локация подсвечена в мире
 			if (row.info() != null) g.fill(MARGIN + LIST_W - 10, y + 3, MARGIN + LIST_W - 3, y + CARD_H - 4, 0xFF000000 | LocationsHighlight.colorOf(row.name()));
-		}
-		g.disableScissor();
+		});
 		int x = MARGIN + LIST_W + MARGIN, w = width - x - MARGIN, y = 24 + 3 * ROW + 2;
 		LevelList.LocationInfo info = selected();
 		if (info != null) {
@@ -173,7 +165,6 @@ final class LocationsScreen extends Screen {
 	}
 
 	private FormattedCharSequence firstLine(Component text, int width) {
-		List<FormattedCharSequence> lines = font.split(text, Math.max(1, width));
-		return lines.isEmpty() ? FormattedCharSequence.EMPTY : lines.getFirst();
+		return Ui.firstLine(font, text, width);
 	}
 }

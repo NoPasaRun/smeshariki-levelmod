@@ -18,11 +18,13 @@ import com.smeshariki.level.net.LevelList.RunInfo;
 import com.smeshariki.level.net.LevelList.TaskInfo;
 import com.smeshariki.level.run.LevelRun;
 import com.smeshariki.level.run.LevelStats;
+import com.smeshariki.ui.CardList;
+import com.smeshariki.ui.Ui;
+import com.smeshariki.ui.UiScreen;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -37,16 +39,17 @@ import net.minecraft.world.level.GameType;
  * Менеджер уровней (клавиша L): слева карточки уровней с превью, справа выбранный уровень (превью, описание, длительность, задачи) и
  * кнопки прогона. Данные присылает сервер; игра в этом окне не останавливается, чтобы группа не ждала открывшего его.
  */
-final class LevelManagerScreen extends Screen {
+final class LevelManagerScreen extends UiScreen {
 	private static final int MARGIN = 8, LIST_W = 150, CARD_H = 40, THUMB_W = 53, THUMB_H = 30, BUTTON_H = 20, LINE = 11;
-	private static final int WHITE = 0xFFFFFFFF, GRAY = 0xFFA0A0A0, DARK = 0xFF707070, GREEN = 0xFF60D060, YELLOW = 0xFFFFD040;
-	private static final int CARD = 0x60000000, CARD_HOVER = 0x80202020, CARD_SELECTED = 0xA0304050, FRAME = 0xFF000000;
+	private static final int WHITE = Ui.TEXT, GRAY = Ui.HINT, DARK = 0xFF707070, GREEN = Ui.GOOD, YELLOW = Ui.ACCENT;
+	private static final int FRAME = Ui.BLACK;
 
 	/** Есть ли текстура превью в ресурсах: чтобы не искать её заново каждый кадр. */
 	private final Map<Identifier, Boolean> textures = new HashMap<>();
 	private List<LevelInfo> shown;
 	private Identifier selected;
-	private int listScroll, detailScroll, detailHeight;
+	private final CardList cards = new CardList(CARD_H, 2);
+	private int detailScroll, detailHeight;
 	private boolean confirmDelete;
 
 	LevelManagerScreen() {
@@ -60,6 +63,7 @@ final class LevelManagerScreen extends Screen {
 
 	@Override
 	protected void init() {
+		cards.layout(MARGIN, listTop(), LIST_W, listBottom());
 		shown = ClientLevels.levels;
 		if (current() == null) selected = shown.isEmpty() ? null : shown.getFirst().id();
 		int y = height - MARGIN - BUTTON_H;
@@ -67,7 +71,7 @@ final class LevelManagerScreen extends Screen {
 		if (ClientLevels.testing) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.test.stop"), b -> {
 			ClientPlayNetworking.send(new com.smeshariki.level.net.LevelTestTask(java.util.Optional.empty()));
 			onClose();
-		}).bounds(MARGIN + 104, y, 110, BUTTON_H).build());
+		}).bounds(MARGIN, y, 110, BUTTON_H).build());
 		if (ClientLevels.editing()) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.create"), b -> LevelEditorScreen.open(minecraft, LevelDraft.blank())).bounds(MARGIN, y, 50, BUTTON_H).build());
 		if (ClientLevels.editing()) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.groups"), b -> minecraft.gui.setScreen(new GroupsScreen())).bounds(width - MARGIN - 144, 3, 70, 18).build());
 		if (ClientLevels.editing()) addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.locations"), b -> minecraft.gui.setScreen(new LocationsScreen())).bounds(width - MARGIN - 70, 3, 70, 18).build());
@@ -152,11 +156,6 @@ final class LevelManagerScreen extends Screen {
 	}
 
 	@Override
-	public boolean isPauseScreen() {
-		return false;
-	}
-
-	@Override
 	public void tick() {
 		super.tick();
 		if (shown != ClientLevels.levels) rebuildWidgets();
@@ -173,24 +172,20 @@ final class LevelManagerScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0 && event.x() >= MARGIN && event.x() < MARGIN + LIST_W && event.y() >= listTop() && event.y() < listBottom()) {
-			int row = ((int) event.y() - listTop() + listScroll) / CARD_H;
-			if (row >= 0 && row < shown.size()) {
-				selected = shown.get(row).id();
-				detailScroll = 0;
-				confirmDelete = false;
-				rebuildWidgets();
-				return true;
-			}
+		int row = cards.rowAt(event.x(), event.y(), shown.size());
+		if (event.button() == 0 && row >= 0) {
+			selected = shown.get(row).id();
+			detailScroll = 0;
+			confirmDelete = false;
+			rebuildWidgets();
+			return true;
 		}
 		return super.mouseClicked(event, doubleClick);
 	}
 
 	@Override
 	public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
-		int step = (int) Math.signum(scrollY) * LINE * 2;
-		if (x < MARGIN + LIST_W) listScroll = clamp(listScroll - step, shown.size() * CARD_H - (listBottom() - listTop()));
-		else detailScroll = clamp(detailScroll - step, detailHeight);
+		if (!cards.wheel(x, scrollY, shown.size(), LINE * 2)) detailScroll = clamp(detailScroll - (int) Math.signum(scrollY) * LINE * 2, detailHeight);
 		return true;
 	}
 
@@ -215,7 +210,11 @@ final class LevelManagerScreen extends Screen {
 	public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
 		super.extractRenderState(g, mouseX, mouseY, delta);
 		g.text(font, title, MARGIN, 9, WHITE);
-		if (!ClientLevels.locations.problems().isEmpty()) g.text(font, Component.translatable("gui.levelmod.locations.problems", ClientLevels.locations.problems().size()), MARGIN + 50, 9, YELLOW);
+		if (!ClientLevels.locations.problems().isEmpty()) {
+			// между названием окна и кнопками «Группы» и «Локации» (при редактировании) — без налезания
+			int from = MARGIN + font.width(title) + 8, to = ClientLevels.editing() ? width - MARGIN - 144 - 6 : width - MARGIN;
+			g.text(font, font.plainSubstrByWidth(Component.translatable("gui.levelmod.locations.problems", ClientLevels.locations.problems().size()).getString(), Math.max(0, to - from)), from, 9, YELLOW);
+		}
 		drawReset(g);
 		if (shown.isEmpty()) {
 			g.centeredText(font, Component.translatable("gui.levelmod.empty"), width / 2, height / 2 - 4, GRAY);
@@ -235,29 +234,23 @@ final class LevelManagerScreen extends Screen {
 		int percent = ClientLevels.resetPercent;
 		if (percent < 0) return;
 		int w = Math.min(150, width / 4), x = (width - w) / 2, y = 14;
-		g.centeredText(font, Component.translatable("gui.levelmod.reset", percent), width / 2, 3, YELLOW);
+		g.centeredText(font, Component.translatable("gui.levelmod.world_reset", percent), width / 2, 3, YELLOW);
 		g.fill(x - 1, y - 1, x + w + 1, y + 7, 0xFF334155);
 		g.fill(x, y, x + w, y + 6, 0xFF0E1218);
-		g.fill(x, y, x + w * percent / 100, y + 6, 0xFFFFC857);
+		g.fill(x, y, x + w * percent / 100, y + 6, Ui.ACCENT);
 	}
 
 	private void drawList(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-		int top = listTop(), bottom = listBottom();
-		g.enableScissor(MARGIN, top, MARGIN + LIST_W, bottom);
-		for (int i = 0; i < shown.size(); i++) {
+		cards.draw(g, shown.size(), mouseX, mouseY, (i, y, hover) -> {
 			LevelInfo level = shown.get(i);
-			int y = top + i * CARD_H - listScroll;
-			if (y + CARD_H <= top || y >= bottom) continue;
-			boolean hover = mouseX >= MARGIN && mouseX < MARGIN + LIST_W && mouseY >= Math.max(y, top) && mouseY < Math.min(y + CARD_H - 2, bottom);
-			g.fill(MARGIN, y, MARGIN + LIST_W, y + CARD_H - 2, level.id().equals(selected) ? CARD_SELECTED : hover ? CARD_HOVER : CARD);
+			cards.background(g, MARGIN, y, level.id().equals(selected), hover);
 			drawPreview(g, level.preview(), MARGIN + 3, y + 4, THUMB_W, THUMB_H);
 			int textX = MARGIN + THUMB_W + 7, textW = LIST_W - THUMB_W - 10;
 			g.text(font, firstLine(level.title(), textW), textX, y + 5, WHITE);
 			g.text(font, firstLine(Component.translatable("gui.levelmod.kind." + level.meta().kind().getSerializedName()).append(" · ≈ " + LevelStats.format(level.expectedTicks())), textW), textX, y + 16, GRAY);
 			Component status = status(level);
 			if (status != null) g.text(font, firstLine(status, textW), textX, y + 26, level.run().isPresent() ? YELLOW : GREEN);
-		}
-		g.disableScissor();
+		});
 	}
 
 	/** Строка состояния на карточке: идёт, сбор группы или сколько раз пройден. */
@@ -353,7 +346,6 @@ final class LevelManagerScreen extends Screen {
 	}
 
 	private FormattedCharSequence firstLine(Component text, int w) {
-		List<FormattedCharSequence> lines = font.split(text, Math.max(1, w));
-		return lines.isEmpty() ? FormattedCharSequence.EMPTY : lines.getFirst();
+		return Ui.firstLine(font, text, w);
 	}
 }

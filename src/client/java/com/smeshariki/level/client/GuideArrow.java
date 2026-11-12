@@ -111,6 +111,11 @@ final class GuideArrow {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> clear());
 	}
 
+	/** Есть ли цель у стрелки (уровень или проверка её задали): тогда в углу экрана подсказана клавиша, прячущая и возвращающая стрелку. */
+	static boolean available() {
+		return on;
+	}
+
 	static void clear() {
 		on = false;
 		strength = 0f;
