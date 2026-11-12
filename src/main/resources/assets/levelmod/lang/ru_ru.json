@@ -255,5 +255,8 @@
 	"gui.levelmod.rules.col.action": "Действие",
 	"gui.levelmod.rules.col.args": "Параметры",
 	"gui.levelmod.rules.col.delay": "Через, с",
-	"gui.levelmod.rules.col.unless": "Не, если"
+	"gui.levelmod.rules.col.unless": "Не, если",
+	"message.levelmod.command.none": "Нет идущего уровня",
+	"message.levelmod.command.completed": "Уровень «%s» завершён принудительно (без статистики)",
+	"message.levelmod.command.skipped": "Текущая миссия уровня «%s» пропущена (без статистики)"
 }

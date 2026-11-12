@@ -277,11 +277,11 @@ public final class LevelStore extends SavedData {
 		return stats.getOrDefault(level, LevelStats.EMPTY);
 	}
 
-	/** Убирает закончившиеся прогоны; в статистику идут только завершённые на 100%. */
+	/** Убирает закончившиеся прогоны; в статистику идут только завершённые на 100% и не принудительно ({@link LevelRun#forced}). */
 	public void sweep() {
 		runs.removeIf(run -> switch (run.state()) {
 			case COMPLETED -> {
-				stats.put(run.level(), statsOf(run.level()).plus(run.elapsed()));
+				if (!run.forced()) stats.put(run.level(), statsOf(run.level()).plus(run.elapsed()));
 				yield true;
 			}
 			case ABANDONED -> true;

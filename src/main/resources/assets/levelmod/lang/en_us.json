@@ -255,5 +255,8 @@
 	"gui.levelmod.rules.col.action": "Action",
 	"gui.levelmod.rules.col.args": "Parameters",
 	"gui.levelmod.rules.col.delay": "After, s",
-	"gui.levelmod.rules.col.unless": "Unless"
+	"gui.levelmod.rules.col.unless": "Unless",
+	"message.levelmod.command.none": "No running level",
+	"message.levelmod.command.completed": "Level \"%s\" was completed by force (no statistics)",
+	"message.levelmod.command.skipped": "The current mission of level \"%s\" was skipped (no statistics)"
 }

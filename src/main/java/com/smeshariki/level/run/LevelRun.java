@@ -141,15 +141,16 @@ public final class LevelRun {
 				return out;
 			}),
 			Codec.unboundedMap(Codec.STRING, CompoundTag.CODEC).optionalFieldOf("snapshots", Map.of()).forGetter(r -> r.snapshots),
-			Extras.CODEC.forGetter(r -> new Extras(List.copyOf(r.companions), r.keptGear)),
+			Extras.CODEC.forGetter(r -> new Extras(List.copyOf(r.companions), r.keptGear, r.forced)),
 			Codec.STRING.listOf().optionalFieldOf("armed_watches", List.of()).forGetter(r -> List.copyOf(r.armedWatches))
 	).apply(i, LevelRun::new));
 
 	/** Поля сверх шестнадцати, которые умеет {@code RecordCodecBuilder}: лежат в файле на верхнем уровне, как остальные. */
-	private record Extras(List<Identifier> companions, Map<UUID, List<ItemStack>> keptGear) {
+	private record Extras(List<Identifier> companions, Map<UUID, List<ItemStack>> keptGear, boolean forced) {
 		static final com.mojang.serialization.MapCodec<Extras> CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
 				Identifier.CODEC.listOf().optionalFieldOf("companion_characters", List.of()).forGetter(Extras::companions),
-				Codec.unboundedMap(UUIDUtil.STRING_CODEC, ItemStack.CODEC.listOf()).optionalFieldOf("kept_gear", Map.of()).forGetter(Extras::keptGear)
+				Codec.unboundedMap(UUIDUtil.STRING_CODEC, ItemStack.CODEC.listOf()).optionalFieldOf("kept_gear", Map.of()).forGetter(Extras::keptGear),
+				Codec.BOOL.optionalFieldOf("forced", false).forGetter(Extras::forced)
 		).apply(i, Extras::new));
 	}
 
@@ -200,6 +201,8 @@ public final class LevelRun {
 	private boolean changed = true;
 	/** Проверка из редактора: миссия начинается с ожидания (отсчёт), как после сброса. Только в памяти: прогоны проверки не сохраняются. */
 	private boolean waitAtStart;
+	/** Уровень пропускали или завершали принудительно (команда оператора): время такого прогона в статистику не идёт. Сохраняется с прогоном. */
+	private boolean forced;
 
 	private LevelRun(Identifier level, State state, List<Participant> participants, long elapsed, Map<String, Progress> tasks, List<LevelEvent> happened, List<Integer> fired, Map<Identifier, Integer> cutscenes, List<Delayed> delayed, Map<UUID, Integer> outside, Map<UUID, Integer> checkpoints, Map<UUID, Identifier> roles, Map<String, List<String>> toggles, Map<String, CompoundTag> snapshots, Extras extras, List<String> armedWatches) {
 		this.level = level;
@@ -218,6 +221,7 @@ public final class LevelRun {
 		toggles.forEach((id, keys) -> this.toggles.put(id, new HashSet<>(keys)));
 		this.snapshots = new HashMap<>(snapshots);
 		this.companions = new java.util.LinkedHashSet<>(extras.companions());
+		this.forced = extras.forced();
 		this.keptGear = new HashMap<>();
 		extras.keptGear().forEach((id, list) -> this.keptGear.put(id, new ArrayList<>(list)));
 		this.armedWatches = new HashSet<>(armedWatches);
@@ -227,7 +231,7 @@ public final class LevelRun {
 	public static LevelRun gather(Identifier level, LevelDefinition definition, RunHost host) {
 		Map<String, Progress> tasks = new HashMap<>();
 		for (TaskEntry entry : definition.tasks()) tasks.put(entry.id(), new Progress());
-		LevelRun run = new LevelRun(level, State.GATHERING, List.of(), 0, tasks, List.of(), List.of(), Map.of(), List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), new Extras(List.of(), Map.of()), List.of());
+		LevelRun run = new LevelRun(level, State.GATHERING, List.of(), 0, tasks, List.of(), List.of(), Map.of(), List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), new Extras(List.of(), Map.of(), false), List.of());
 		run.attach(definition, host);
 		return run;
 	}
@@ -470,6 +474,58 @@ public final class LevelRun {
 
 	private List<UUID> onlineFor(TaskEntry entry) {
 		return online().stream().filter(id -> hasRole(id, entry)).toList();
+	}
+
+	/** Прогон шёл с принудительными пропусками: статистика его не берёт. */
+	public boolean forced() {
+		return forced;
+	}
+
+	/**
+	 * Принудительно завершает уровень (команда оператора): все задачи считаются выполненными, события завершения идут как обычно ({@code level_completed}:
+	 * итоговая кат-сцена, откат областей начатых миссий), но события начала и конца пропущенных миссий не рассылаются, чтобы не запускать их волны и обстрелы.
+	 * Время прогона в статистику не идёт.
+	 */
+	public boolean forceComplete() {
+		if (state != State.RUNNING) return false;
+		forced = true;
+		for (MissionEntry mission : definition.missions()) {
+			for (TaskEntry entry : mission.tasks()) {
+				Progress progress = tasks.get(entry.id());
+				progress.started = true;
+				progress.completed = true;
+				progress.missed = false;
+			}
+		}
+		changed = true;
+		releaseHolds();
+		state = State.COMPLETED;
+		restoreAll();
+		dismissCompanions();
+		fire(LevelEvent.LEVEL_COMPLETED);
+		return true;
+	}
+
+	/**
+	 * Пропускает текущую миссию (команда оператора): её задачи считаются выполненными обычным путём (события, триггеры), дальше всё идёт как при прохождении:
+	 * следующая миссия начинается. Время прогона в статистику не идёт.
+	 *
+	 * @return {@code false}, если уровень не идёт или миссии нет
+	 */
+	public boolean skipMission() {
+		MissionEntry mission = currentMission();
+		if (mission == null) return false;
+		forced = true;
+		for (TaskEntry entry : mission.tasks()) {
+			Progress progress = tasks.get(entry.id());
+			if (progress.completed) continue;
+			progress.started = true;
+			progress.missed = false;
+			complete(entry, progress);
+		}
+		changed = true;
+		settle();
+		return true;
 	}
 
 	public void abandon() {

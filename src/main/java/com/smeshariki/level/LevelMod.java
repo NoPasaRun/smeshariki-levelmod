@@ -23,6 +23,7 @@ public class LevelMod implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		com.smeshariki.level.run.LevelConditions.init();
+		com.smeshariki.level.run.LevelCommands.init();
 		Levels.init();
 		LevelManager.init();
 		// шкатулка из первого уровня: бумага с моделью (задача «Взять лопату и шкатулку» проверяет именно её)
