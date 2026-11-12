@@ -397,6 +397,7 @@ public final class LevelRun {
 	 */
 	private void gatherAtStart(MissionEntry mission) {
 		checkpoints.clear();
+		snapshots.keySet().removeIf(k -> k.startsWith(mission.id() + "#"));
 		changed = true;
 		for (UUID id : online()) {
 			Identifier role = roles.get(id);
@@ -439,6 +440,7 @@ public final class LevelRun {
 				if (!atCheckpoint(id, own.get(i))) continue;
 				checkpoints.put(id, i);
 				changed = true;
+				takeCheckpointSnapshot(mission, id, own.get(i));
 				host.tell(id, Component.translatable("message.levelmod.checkpoint"), true);
 				break;
 			}
@@ -526,8 +528,9 @@ public final class LevelRun {
 		progress.credits.clear();
 		progress.marks.clear();
 		fire(LevelEvent.taskReset(task));
-		for (MissionEntry mission : definition.missions()) if (mission.tasks().contains(entry)) restore(mission);
-		(inSharedMission(entry) ? online() : onlineFor(entry)).forEach(this::sendBack);
+		List<UUID> back = inSharedMission(entry) ? online() : onlineFor(entry);
+		for (MissionEntry mission : definition.missions()) if (mission.tasks().contains(entry)) restore(mission, back);
+		back.forEach(this::sendBack);
 	}
 
 	/** Снимок подвижного в области миссии; не загружены чанки — останется без снимка, {@code tick} попробует снова. */
@@ -537,14 +540,49 @@ public final class LevelRun {
 		if (tag != null) snapshots.put(mission.id(), tag);
 	}
 
+	/**
+	 * Подвижное в области миссии на момент входа игрока в очередной чекпоинт (не первый: первый — начало миссии, его снимает {@link #takeSnapshot}).
+	 * Ключ {@code <миссия>#<номер чекпоинта в списке миссии>@<игрок>}; у игрока хранится один, последний. Нет снимка (чанки области не загружены) — сброс
+	 * вернёт снимок начала миссии.
+	 */
+	private void takeCheckpointSnapshot(MissionEntry mission, UUID player, com.smeshariki.level.task.Checkpoint checkpoint) {
+		if (mission.area().isEmpty()) return;
+		CompoundTag tag = host.saveSnapshot(mission.area().get());
+		if (tag == null) return;
+		String prefix = mission.id() + "#", suffix = "@" + player;
+		snapshots.keySet().removeIf(k -> k.startsWith(prefix) && k.endsWith(suffix));
+		snapshots.put(prefix + mission.checkpoints().indexOf(checkpoint) + suffix, tag);
+	}
+
+	/**
+	 * Снимок, к которому вернуть область при сбросе: у вернувшихся игроков самый ранний из снимков их последних чекпоинтов (никого не перепрыгиваем вперёд);
+	 * ни у кого нет — снимок начала миссии.
+	 */
+	private @Nullable CompoundTag snapshotFor(MissionEntry mission, java.util.Collection<UUID> players) {
+		String best = null;
+		int bestIndex = Integer.MAX_VALUE;
+		String prefix = mission.id() + "#";
+		for (UUID player : players) {
+			for (String key : snapshots.keySet()) {
+				if (!key.startsWith(prefix) || !key.endsWith("@" + player)) continue;
+				int index = Integer.parseInt(key.substring(prefix.length(), key.indexOf('@')));
+				if (index < bestIndex) {
+					bestIndex = index;
+					best = key;
+				}
+			}
+		}
+		return best != null ? snapshots.get(best) : snapshots.get(mission.id());
+	}
+
 	/** Когда (тик прогона) постройки миссии последний раз возвращались: сброс задач обоих игроков за один тик возвращает их и сообщает об этом один раз. */
 	private final Map<String, Long> restoredAt = new HashMap<>();
 
 	/** Область миссии — как в её начале: подвижное из снимка, блоки к версии мира. */
-	private void restore(MissionEntry mission) {
+	private void restore(MissionEntry mission, java.util.Collection<UUID> players) {
 		if (mission.area().isEmpty() || Long.valueOf(elapsed).equals(restoredAt.put(mission.id(), elapsed))) return;
 		TaskArea area = mission.area().get();
-		CompoundTag snapshot = snapshots.get(mission.id());
+		CompoundTag snapshot = snapshotFor(mission, players);
 		if (snapshot != null) host.restoreSnapshot(area.dimension(), snapshot);
 		host.resetBlocks(area);
 		if (state == State.RUNNING) fire(LevelEvent.missionReset(mission.id()));
@@ -552,7 +590,7 @@ public final class LevelRun {
 
 	/** Конец уровня: области начатых миссий возвращаются, чтобы уровень можно было пройти снова. */
 	private void restoreAll() {
-		for (MissionEntry mission : definition.missions()) if (happened.contains(LevelEvent.missionStarted(mission.id()))) restore(mission);
+		for (MissionEntry mission : definition.missions()) if (happened.contains(LevelEvent.missionStarted(mission.id()))) restore(mission, List.of());
 		snapshots.clear();
 	}
 
@@ -662,7 +700,8 @@ public final class LevelRun {
 	}
 
 	private void sendBackAfter(List<TaskEntry> affected, UUID player) {
-		for (MissionEntry mission : definition.missions()) if (affected.stream().anyMatch(mission.tasks()::contains)) restore(mission);
+		List<UUID> back = affected.stream().anyMatch(this::inSharedMission) ? online() : List.of(player);
+		for (MissionEntry mission : definition.missions()) if (affected.stream().anyMatch(mission.tasks()::contains)) restore(mission, back);
 		if (affected.stream().anyMatch(this::inSharedMission)) online().forEach(this::sendBack);
 		else sendBack(player);
 	}
