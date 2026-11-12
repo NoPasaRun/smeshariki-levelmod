@@ -89,6 +89,12 @@ public interface RunHost {
 	/** Вернуть блоки области к текущей версии мира (понемногу, в следующие тики). */
 	void resetBlocks(TaskArea area);
 
+	/** Запомнить ячейки отката чекпоинта (блоки и сущности нужных видов в области) в NBT. */
+	CompoundTag saveCells(TaskArea area, java.util.List<com.smeshariki.level.task.ResetCell> cells);
+
+	/** Вернуть ячейки к запомненному (после того, как область вернулась к версии мира). */
+	void restoreCells(TaskArea area, CompoundTag cells);
+
 	/** Вернуть постройки к снимку. */
 	void restoreSnapshot(ResourceKey<Level> dimension, CompoundTag snapshot);
 

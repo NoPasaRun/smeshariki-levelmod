@@ -136,7 +136,7 @@ public final class Levels {
 	/** Разбирает JSON уровня с подстановкой локаций. */
 	public static Parsed parse(JsonElement json, LevelStore store, Set<String> missing) {
 		Set<String> own = new TreeSet<>();
-		JsonElement resolved = resolve(LegacyCheckpoints.migrate(json), store, own);
+		JsonElement resolved = resolve(LegacyTriggers.migrate(LegacyCheckpoints.migrate(json)), store, own);
 		missing.addAll(own);
 		if (!own.isEmpty()) return new Parsed(null, List.of("не отмечены локации " + own));
 		var result = LevelDefinition.CODEC.parse(JsonOps.INSTANCE, resolved);

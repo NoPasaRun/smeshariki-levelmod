@@ -95,7 +95,19 @@ public final class LevelAnalyzer {
 				}
 			}
 		}
-		for (Trigger trigger : level.triggers()) {
+		// действия при входе в чекпоинт проверяются как действия триггера; ячейки отката — известные виды блоков и сущностей
+		List<Trigger> toCheck = new ArrayList<>(level.triggers());
+		for (MissionEntry mission : level.missions()) {
+			for (var checkpoint : mission.checkpoints()) {
+				checkpoint.onEnter().ifPresent(action -> toCheck.add(new Trigger(List.of(LevelEvent.LEVEL_STARTED), 0, List.of(action))));
+				for (var cell : checkpoint.resets()) {
+					boolean known = cell.kind() == com.smeshariki.level.task.ResetCell.Kind.BLOCK ? net.minecraft.core.registries.BuiltInRegistries.BLOCK.containsKey(cell.type()) : net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.containsKey(cell.type());
+					if (!known) problems.add("ячейка отката миссии \"" + mission.id() + "\": неизвестный " + (cell.kind() == com.smeshariki.level.task.ResetCell.Kind.BLOCK ? "блок " : "вид сущности ") + cell.type());
+				}
+			}
+			scopeProblems(level, mission, ids, problems);
+		}
+		for (Trigger trigger : toCheck) {
 			for (LevelAction action : trigger.then()) {
 				switch (action) {
 					case LevelAction.StartTask(String task) -> {
@@ -148,7 +160,7 @@ public final class LevelAnalyzer {
 		for (Trigger trigger : level.triggers())
 			for (LevelEvent event : trigger.when())
 				// выход, выход за границу, гибель и события механик (шар сел) не часть обычного прохождения: их триггеры живые, хотя времени у событий нет
-				if (event.kind() != LevelEvent.Kind.LEVEL_ABANDONED && event.kind() != LevelEvent.Kind.TASK_FAILED && event.kind() != LevelEvent.Kind.TASK_RESET && event.kind() != LevelEvent.Kind.MISSION_RESET && event.kind() != LevelEvent.Kind.MISSION_RESUMED && event.kind() != LevelEvent.Kind.EXTERNAL && !(event.kind() == LevelEvent.Kind.CUSTOM && watchIds.contains(event.subject())) && !times.containsKey(event)) problems.add("событие " + event + " никогда не случится, триггер не сработает");
+				if (event.kind() != LevelEvent.Kind.LEVEL_ABANDONED && event.kind() != LevelEvent.Kind.TASK_FAILED && event.kind() != LevelEvent.Kind.TASK_RESET && event.kind() != LevelEvent.Kind.MISSION_RESET && event.kind() != LevelEvent.Kind.MISSION_RESUMED && event.kind() != LevelEvent.Kind.CHECKPOINT_REACHED && event.kind() != LevelEvent.Kind.CHECKPOINT_RESET && event.kind() != LevelEvent.Kind.EXTERNAL && !(event.kind() == LevelEvent.Kind.CUSTOM && watchIds.contains(event.subject())) && !times.containsKey(event)) problems.add("событие " + event + " никогда не случится, триггер не сработает");
 		return new Result(times.getOrDefault(LevelEvent.LEVEL_COMPLETED, 0L), problems);
 	}
 
@@ -183,6 +195,44 @@ public final class LevelAnalyzer {
 				}
 				case LevelAction.Order ignored -> {
 				}
+			}
+		}
+	}
+
+	/**
+	 * События и триггеры миссии видны только в ней: она ссылается лишь на своё (начало, конец, сброс, свои задачи и чекпоинты), чужие миссии и уровень в её
+	 * событиях не нужны, а действия трогают только её задачи. Кат-сцены, наблюдатели и события механик общие.
+	 */
+	private static void scopeProblems(LevelDefinition level, MissionEntry mission, Set<String> allTasks, List<String> problems) {
+		Set<String> own = new HashSet<>();
+		for (TaskEntry entry : mission.tasks()) own.add(entry.id());
+		String where = "триггер миссии \"" + mission.id() + "\": ";
+		for (Trigger trigger : mission.triggers()) {
+			List<LevelEvent> events = new ArrayList<>(trigger.when());
+			events.addAll(trigger.unless());
+			for (LevelEvent event : events) {
+				switch (event.kind()) {
+					case LEVEL_STARTED, LEVEL_COMPLETED, LEVEL_ABANDONED -> problems.add(where + "событие уровня " + event + " в миссии не видно");
+					case MISSION_STARTED, MISSION_COMPLETED, MISSION_RESET, MISSION_RESUMED -> {
+						if (!event.subject().equals(mission.id())) problems.add(where + "событие другой миссии " + event);
+					}
+					case TASK_STARTED, TASK_COMPLETED, TASK_FAILED, TASK_RESET -> {
+						if (!own.contains(event.subject())) problems.add(where + "событие чужой задачи " + event);
+					}
+					case CHECKPOINT_REACHED, CHECKPOINT_RESET -> {
+						String number = event.subject().substring(event.subject().lastIndexOf(':') + 1);
+						int n = number.matches("\\d{1,4}") ? Integer.parseInt(number) : 0;
+						if (!event.checkpointMission().equals(mission.id())) problems.add(where + "чекпоинт другой миссии " + event);
+						else if (n < 1 || n > mission.checkpoints().size()) problems.add(where + "нет такого чекпоинта: " + event);
+						else if (event.kind() == LevelEvent.Kind.CHECKPOINT_REACHED && n == 1) problems.add(where + "первый чекпоинт — начало миссии, вход в него не событие: " + event);
+					}
+					default -> {
+					}
+				}
+			}
+			for (LevelAction action : trigger.then()) {
+				String task = action instanceof LevelAction.StartTask(String t) ? t : action instanceof LevelAction.FailTask(String t) ? t : null;
+				if (task != null && allTasks.contains(task) && !own.contains(task)) problems.add(where + "действие над чужой задачей \"" + task + "\"");
 			}
 		}
 	}

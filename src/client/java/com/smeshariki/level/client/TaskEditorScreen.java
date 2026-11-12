@@ -126,7 +126,10 @@ final class TaskEditorScreen extends UiScreen {
 			y += ROW;
 			// чекпоинты: первый — начало миссии, последний — конец; сброс возвращает на самый дальний достигнутый
 			addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.checkpoints.open", selected.checkpoints.size()), b -> minecraft.gui.setScreen(new CheckpointsScreen(level, selected)))
-					.bounds(x, y, w, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.checkpoints.hint"))).build());
+					.bounds(x, y, half, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.checkpoints.hint"))).build());
+			// события миссии видны только в ней: её задачи, чекпоинты, сброс; механики с параметрами
+			addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.rules.mission_open", selected.rules.size()), b -> minecraft.gui.setScreen(new MechanicRulesScreen(level, selected)))
+					.bounds(x + half + 2, y, half, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.rules.mission_tip"))).build());
 			y += ROW;
 			// всё в области миссии возвращается при сбросе: подвижное к её началу, блоки к версии мира
 			addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.mission.area", selected.area.isEmpty() ? Component.translatable("gui.levelmod.editor.none") : Component.literal(selected.area)), b -> minecraft.gui.setScreen(new LocationPickerScreen(this, true, name -> {

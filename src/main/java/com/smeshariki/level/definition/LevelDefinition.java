@@ -78,15 +78,25 @@ public record LevelDefinition(LevelKind kind, Component title, Component descrip
 	/** Разворачивает сокращения в триггеры. Явные идут первыми, чтобы их номера не зависели от правок {@code after}. */
 	public LevelDefinition expanded() {
 		List<Trigger> all = new ArrayList<>(triggers);
+		List<Trigger> explicit = new ArrayList<>(triggers);
+		for (MissionEntry mission : missions) explicit.addAll(mission.triggers());
 		for (MissionEntry mission : missions) {
 			for (TaskEntry entry : mission.tasks()) {
 				LevelAction start = new LevelAction.StartTask(entry.id());
 				List<LevelEvent> events = new ArrayList<>(entry.startOn());
 				for (String task : entry.after()) events.add(LevelEvent.taskCompleted(task));
 				if (!events.isEmpty()) all.add(new Trigger(events, entry.startDelay(), List.of(start)));
-				else if (triggers.stream().noneMatch(t -> t.then().contains(start))) all.add(new Trigger(List.of(LevelEvent.missionStarted(mission.id())), entry.startDelay(), List.of(start)));
+				else if (explicit.stream().noneMatch(t -> t.then().contains(start))) all.add(new Trigger(List.of(LevelEvent.missionStarted(mission.id())), entry.startDelay(), List.of(start)));
 			}
 		}
+		// триггеры миссий идут последними (номера прежних не сдвигаются) и работают только в рамках своей миссии: {@link #triggerOwner}
+		for (MissionEntry mission : missions) all.addAll(mission.triggers());
 		return new LevelDefinition(kind, title, description, preview, minPlayers, maxPlayers, order, startPos, missions, List.copyOf(all), characters, characterStarts, watches);
+	}
+
+	/** Миссия, которой принадлежит триггер ({@code ""} — триггер уровня); сравнение по самому объекту: развёрнутый список хранит те же триггеры. */
+	public String triggerOwner(Trigger trigger) {
+		for (MissionEntry mission : missions) for (Trigger own : mission.triggers()) if (own == trigger) return mission.id();
+		return "";
 	}
 }

@@ -29,10 +29,21 @@ final class MechanicRulesScreen extends ListScreen {
 	private int whenW, subjectW, actionW, delayW, unlessW;
 
 	private final LevelDraft draft;
+	/** Миссия, чьи события правятся; {@code null} — события уровня. */
+	private final LevelDraft.MissionDraft scope;
 
 	MechanicRulesScreen(LevelDraft draft) {
-		super(Component.translatable("gui.levelmod.rules"));
+		this(draft, null);
+	}
+
+	MechanicRulesScreen(LevelDraft draft, LevelDraft.MissionDraft scope) {
+		super(Component.translatable(scope == null ? "gui.levelmod.rules" : "gui.levelmod.rules.mission"));
 		this.draft = draft;
+		this.scope = scope;
+	}
+
+	private List<LevelDraft.MechanicRule> rules() {
+		return scope == null ? draft.rules : scope.rules;
 	}
 
 	/** Левые края колонок для заголовков над строками. */
@@ -67,18 +78,18 @@ final class MechanicRulesScreen extends ListScreen {
 		}
 		argsW = Math.max(ARGS_MIN, argsW);
 		int visible = visible();
-		bar.layout(x + w + 3, TOP, visible * ROW - 2, draft.rules.size(), visible);
+		bar.layout(x + w + 3, TOP, visible * ROW - 2, rules().size(), visible);
 		colWhen = x;
 		colSubject = x + whenW + 2;
 		colAction = x + whenW + subjectW + 4;
 		colArgs = colAction + actionW + 2;
 		colDelay = colAction + actionW + argsW + 4;
 		colUnless = colAction + actionW + argsW + delayW + 6;
-		for (int i = bar.scroll; i < Math.min(draft.rules.size(), bar.scroll + visible); i++) {
-			LevelDraft.MechanicRule rule = draft.rules.get(i);
+		for (int i = bar.scroll; i < Math.min(rules().size(), bar.scroll + visible); i++) {
+			LevelDraft.MechanicRule rule = rules().get(i);
 			int y = TOP + (i - bar.scroll) * ROW;
 			addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.rules.when", eventName(draft, rule.when)), b -> {
-				List<LevelEvent> all = eventOptions(draft);
+				List<LevelEvent> all = eventOptions(draft, scope);
 				LevelEvent current = rule.when.kind() == LevelEvent.Kind.EXTERNAL ? LevelEvent.external(externalName(rule.when)) : rule.when;
 				if (!all.contains(current)) all.add(current);
 				SelectScreen.open(this, Component.translatable("gui.levelmod.select.event"), all, e -> eventName(draft, e), current, e -> {
@@ -110,7 +121,7 @@ final class MechanicRulesScreen extends ListScreen {
 			addRenderableWidget(Button.builder(rule.unless == null ? Component.translatable("gui.levelmod.rules.unless_none") : Component.translatable("gui.levelmod.rules.unless", eventName(draft, rule.unless)), b -> {
 				List<java.util.Optional<LevelEvent>> all = new ArrayList<>();
 				all.add(java.util.Optional.empty());
-				for (LevelEvent e : eventOptions(draft)) all.add(java.util.Optional.of(e));
+				for (LevelEvent e : eventOptions(draft, scope)) all.add(java.util.Optional.of(e));
 				java.util.Optional<LevelEvent> current = java.util.Optional.ofNullable(rule.unless);
 				if (!all.contains(current)) all.add(current);
 				SelectScreen.open(this, Component.translatable("gui.levelmod.rules.unless_title"), all,
@@ -121,17 +132,18 @@ final class MechanicRulesScreen extends ListScreen {
 				rebuildWidgets();
 			}).bounds(ux + unlessW + 2, y, REPEAT_W, H).tooltip(Tooltip.create(Component.translatable(rule.repeat ? "gui.levelmod.rules.repeat" : "gui.levelmod.rules.once"))).build());
 			addDelete(x + w - DELETE_W, y, () -> {
-				draft.rules.remove(rule);
+				rules().remove(rule);
 				rebuildWidgets();
 			});
 		}
 		int bottom = height - 26;
 		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.rules.add"), b -> {
 			LevelDraft.MechanicRule rule = new LevelDraft.MechanicRule();
+			if (scope != null) rule.when = LevelEvent.missionStarted(scope.id);
 			List<Identifier> all = actions();
 			if (!all.isEmpty()) rule.action = all.getFirst();
-			draft.rules.add(rule);
-			bar.scroll = Math.max(0, draft.rules.size() - visible());
+			rules().add(rule);
+			bar.scroll = Math.max(0, rules().size() - visible());
 			rebuildWidgets();
 		}).bounds(x, bottom, w / 2 - 2, H).build());
 		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.editor.back"), b -> LevelEditorScreen.reopen(minecraft)).bounds(x + w / 2 + 2, bottom, w / 2 - 2, H).build());
@@ -148,20 +160,38 @@ final class MechanicRulesScreen extends ListScreen {
 		return second < 0 ? text : text.substring(0, second);
 	}
 
-	/** События уровня для выбора: начало уровня, начало и конец миссий, начало, конец и сброс задач, кат-сцены, наблюдатели и события механик. */
+	/** События уровня для выбора (наблюдатели и т. п.). */
 	static List<LevelEvent> eventOptions(LevelDraft draft) {
+		return eventOptions(draft, null);
+	}
+
+	/**
+	 * События для выбора. Уровень видит только своё: начало уровня, начало и конец миссий, кат-сцены, наблюдателей и события механик; то, что происходит
+	 * внутри миссии (задачи, сброс, чекпоинты), — нет. Миссия видит только своё: начало, конец, сброс и возобновление, свои задачи, свои чекпоинты
+	 * (вход и откат на них), кат-сцены, наблюдателей и события механик.
+	 */
+	static List<LevelEvent> eventOptions(LevelDraft draft, LevelDraft.MissionDraft scope) {
 		List<LevelEvent> options = new ArrayList<>();
-		options.add(LevelEvent.LEVEL_STARTED);
-		for (LevelDraft.MissionDraft mission : draft.missions) {
-			options.add(LevelEvent.missionStarted(mission.id));
-			for (TaskDraft task : mission.tasks) {
+		if (scope == null) {
+			options.add(LevelEvent.LEVEL_STARTED);
+			for (LevelDraft.MissionDraft mission : draft.missions) {
+				options.add(LevelEvent.missionStarted(mission.id));
+				options.add(LevelEvent.missionCompleted(mission.id));
+			}
+		} else {
+			options.add(LevelEvent.missionStarted(scope.id));
+			for (TaskDraft task : scope.tasks) {
 				options.add(LevelEvent.taskStarted(task.id));
 				options.add(LevelEvent.taskCompleted(task.id));
 				options.add(LevelEvent.taskReset(task.id));
 			}
-			options.add(LevelEvent.missionCompleted(mission.id));
-			options.add(LevelEvent.missionReset(mission.id));
-			options.add(LevelEvent.missionResumed(mission.id));
+			for (int i = 1; i <= scope.checkpoints.size(); i++) {
+				if (i > 1) options.add(LevelEvent.checkpointReached(scope.id, i));
+				options.add(LevelEvent.checkpointReset(scope.id, i));
+			}
+			options.add(LevelEvent.missionCompleted(scope.id));
+			options.add(LevelEvent.missionReset(scope.id));
+			options.add(LevelEvent.missionResumed(scope.id));
 		}
 		for (Identifier cutscene : ClientLevels.cutscenes) {
 			options.add(LevelEvent.cutsceneStarted(cutscene));
@@ -172,7 +202,7 @@ final class MechanicRulesScreen extends ListScreen {
 		return options;
 	}
 
-	private static Component mechanicName(Identifier id) {
+	static Component mechanicName(Identifier id) {
 		return Component.translatableWithFallback("mechanic." + id.getNamespace() + "." + id.getPath(), id.getPath());
 	}
 
@@ -201,6 +231,10 @@ final class MechanicRulesScreen extends ListScreen {
 				LevelDraft.MissionDraft mission = draft.missions.stream().filter(m -> m.id.equals(subject)).findFirst().orElse(null);
 				yield Component.translatable("gui.levelmod.start.mission_resumed", mission == null || mission.title.isBlank() ? subject : mission.title);
 			}
+			case CHECKPOINT_REACHED, CHECKPOINT_RESET -> {
+				String number = subject.substring(subject.lastIndexOf(':') + 1);
+				yield Component.translatable(event.kind() == LevelEvent.Kind.CHECKPOINT_REACHED ? "gui.levelmod.start.checkpoint_reached" : "gui.levelmod.start.checkpoint_reset", number);
+			}
 			case TASK_FAILED -> Component.translatable("gui.levelmod.start.task_failed", taskName);
 			case LEVEL_COMPLETED -> Component.translatable("gui.levelmod.start.level_completed");
 			case TASK_STARTED -> Component.translatable("gui.levelmod.start.task_started", taskName);
@@ -219,8 +253,8 @@ final class MechanicRulesScreen extends ListScreen {
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
 		super.extractRenderState(g, mouseX, mouseY, delta);
-		drawHeader(g, Component.translatable("gui.levelmod.rules.hint"));
-		if (draft.rules.isEmpty()) {
+		drawHeader(g, Component.translatable(scope == null ? "gui.levelmod.rules.hint" : "gui.levelmod.rules.mission_hint", scope == null ? "" : scope.title.isBlank() ? scope.id : scope.title));
+		if (rules().isEmpty()) {
 			drawNote(g, Component.translatable("gui.levelmod.rules.empty"), TOP + 6);
 			return;
 		}

@@ -56,6 +56,13 @@ final class LevelDraft {
 		/** Только для этого персонажа; {@code null} — для всех. */
 		Identifier character;
 		final JsonObject extras = new JsonObject();
+		/** Ячейки отката (до {@link com.smeshariki.level.task.ResetCell#MAX}): что ещё запоминать в области при входе и возвращать при откате. */
+		final List<com.smeshariki.level.task.ResetCell> resets = new ArrayList<>();
+		/** Действие механики при входе в чекпоинт: идентификатор и параметры строкой (как у правила); {@code null} — нет. */
+		Identifier enterAction;
+		String enterArgs = "";
+		/** Действие при входе, записанное иначе (не механика или сложные параметры): редактор не показывает, но сохраняет. */
+		JsonObject enterRaw;
 
 		static CheckpointDraft of(JsonElement json) {
 			CheckpointDraft draft = new CheckpointDraft();
@@ -65,20 +72,58 @@ final class LevelDraft {
 				place = object.get("at");
 				if (object.has("character")) draft.character = Identifier.tryParse(object.get("character").getAsString());
 				for (String key : new String[] {"min_y", "max_y"}) if (object.has(key)) draft.extras.add(key, object.get(key));
+				if (object.has("reset") && object.get("reset").isJsonArray()) {
+					for (JsonElement cell : object.getAsJsonArray("reset")) {
+						com.smeshariki.level.task.ResetCell.CODEC.parse(com.mojang.serialization.JsonOps.INSTANCE, cell).result().ifPresent(draft.resets::add);
+					}
+				}
+				if (object.has("on_enter") && object.get("on_enter").isJsonObject()) draft.readEnter(object.getAsJsonObject("on_enter"));
 			}
 			if (place.isJsonPrimitive() && place.getAsString().startsWith("@")) draft.location = place.getAsString().substring(1);
 			else draft.rawPlace = place;
 			return draft;
 		}
 
-		JsonElement toJson() {
+		private void readEnter(JsonObject then) {
+			String type = text(then, "action", "");
+			Identifier id = type.indexOf(':') > 0 ? Identifier.tryParse(type) : null;
+			List<String> args = new ArrayList<>();
+			boolean simple = id != null;
+			for (var entry : then.entrySet()) {
+				if (entry.getKey().equals("action")) continue;
+				if (!entry.getValue().isJsonPrimitive()) simple = false;
+				else args.add(entry.getKey() + "=" + entry.getValue().getAsString());
+			}
+			if (simple) {
+				enterAction = id;
+				enterArgs = String.join(", ", args);
+			} else enterRaw = then.deepCopy();
+		}
+
+		/** Действие при входе в JSON или {@code null}. */
+		JsonObject enterJson() throws TaskDraft.Invalid {
+			if (enterAction == null) return enterRaw;
+			JsonObject then = new JsonObject();
+			then.addProperty("action", enterAction.toString());
+			parseArgs(enterArgs).entrySet().forEach(e -> then.add(e.getKey(), e.getValue()));
+			return then;
+		}
+
+		JsonElement toJson() throws TaskDraft.Invalid {
 			JsonElement place = location.isEmpty() ? rawPlace : new com.google.gson.JsonPrimitive("@" + location);
 			if (place == null) return null;
-			if (character == null && extras.size() == 0) return place;
+			JsonObject enter = enterJson();
+			if (character == null && extras.size() == 0 && resets.isEmpty() && enter == null) return place;
 			JsonObject object = new JsonObject();
 			object.add("at", place);
 			if (character != null) object.addProperty("character", character.toString());
 			extras.entrySet().forEach(e -> object.add(e.getKey(), e.getValue()));
+			if (!resets.isEmpty()) {
+				JsonArray cells = new JsonArray();
+				for (var cell : resets) cells.add(com.smeshariki.level.task.ResetCell.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, cell).getOrThrow());
+				object.add("reset", cells);
+			}
+			if (enter != null) object.add("on_enter", enter);
 			return object;
 		}
 	}
@@ -100,6 +145,10 @@ final class LevelDraft {
 		/** Описание миссии: показывается по кнопке «Подробнее» рядом со списком задач. */
 		String description = "";
 		final List<TaskDraft> tasks = new ArrayList<>();
+		/** События миссии: правила механик, видимые и работающие только в ней. */
+		final List<MechanicRule> rules = new ArrayList<>();
+		/** Прочие триггеры миссии (не правила механик и не кат-сцены после задач): редактор их не показывает, но сохраняет. */
+		final List<JsonElement> otherTriggers = new ArrayList<>();
 
 		MissionDraft(String id) {
 			this.id = id;
@@ -145,7 +194,7 @@ final class LevelDraft {
 
 	static LevelDraft of(Identifier id, String source) {
 		// старые файлы с start и character_starts читаются как чекпоинты
-		JsonObject json = com.smeshariki.level.definition.LegacyCheckpoints.migrate(JsonParser.parseString(source)).getAsJsonObject();
+		JsonObject json = com.smeshariki.level.definition.LegacyTriggers.migrate(com.smeshariki.level.definition.LegacyCheckpoints.migrate(JsonParser.parseString(source))).getAsJsonObject();
 		LevelDraft draft = new LevelDraft(id);
 		draft.kind = "side".equals(text(json, "kind", "story")) ? LevelKind.SIDE : LevelKind.STORY;
 		draft.title = text(json, "title", "");
@@ -182,6 +231,9 @@ final class LevelDraft {
 				mission.tasks.add(task);
 				draft.nextTask = Math.max(draft.nextTask, number(task.id) + 1);
 			}
+			if (object.has("triggers")) for (JsonElement trigger : object.getAsJsonArray("triggers")) {
+				if (!draft.readCutscene(trigger.getAsJsonObject(), mission) && !draft.readRule(trigger.getAsJsonObject(), mission.rules)) mission.otherTriggers.add(trigger);
+			}
 		}
 		if (json.has("watches")) for (JsonElement w : json.getAsJsonArray("watches")) {
 			JsonObject object = w.getAsJsonObject();
@@ -192,30 +244,30 @@ final class LevelDraft {
 			watch.conditions.addAll(ConditionDraft.list(object.get("conditions")));
 			draft.watches.add(watch);
 		}
-		if (json.has("triggers")) for (JsonElement trigger : json.getAsJsonArray("triggers")) if (!draft.readCutscene(trigger.getAsJsonObject()) && !draft.readRule(trigger.getAsJsonObject())) draft.otherTriggers.add(trigger);
+		if (json.has("triggers")) for (JsonElement trigger : json.getAsJsonArray("triggers")) if (!draft.readCutscene(trigger.getAsJsonObject(), null) && !draft.readRule(trigger.getAsJsonObject(), draft.rules)) draft.otherTriggers.add(trigger);
 		return draft;
 	}
 
-	/** Кат-сцена в начале или после задачи: true, если триггер как раз такой. */
-	private boolean readCutscene(JsonObject trigger) {
+	/** Кат-сцена в начале или после задачи: true, если триггер как раз такой. {@code mission} — триггер миссии: годится только конец её задачи. */
+	private boolean readCutscene(JsonObject trigger, MissionDraft mission) {
 		if (trigger.has("delay") || !trigger.get("when").isJsonPrimitive() || !trigger.get("then").isJsonObject()) return false;
 		JsonObject then = trigger.getAsJsonObject("then");
 		if (!"play_cutscene".equals(text(then, "action", ""))) return false;
 		Identifier cutscene = Identifier.parse(text(then, "cutscene", ""));
 		String when = trigger.get("when").getAsString();
-		if (when.equals(LevelEvent.LEVEL_STARTED.toString())) {
+		if (mission == null && when.equals(LevelEvent.LEVEL_STARTED.toString())) {
 			intro = cutscene;
 			return true;
 		}
 		String prefix = LevelEvent.taskCompleted("").toString();
 		TaskDraft task = when.startsWith(prefix) ? task(when.substring(prefix.length())) : null;
-		if (task == null) return false;
+		if (task == null || mission != null && !mission.tasks.contains(task)) return false;
 		task.outro = cutscene;
 		return true;
 	}
 
 	/** Правило механики: true, если триггер как раз такой (одно событие, одно действие механики с простыми параметрами, повторяемость как у правила). */
-	private boolean readRule(JsonObject trigger) {
+	private boolean readRule(JsonObject trigger, List<MechanicRule> target) {
 		if (!trigger.get("when").isJsonPrimitive() || !trigger.get("then").isJsonObject()) return false;
 		JsonObject then = trigger.getAsJsonObject("then");
 		String type = text(then, "action", "");
@@ -240,7 +292,7 @@ final class LevelDraft {
 			rule.unless = LevelEvent.CODEC.parse(com.mojang.serialization.JsonOps.INSTANCE, trigger.get("unless")).result().orElse(null);
 			if (rule.unless == null) return false;
 		}
-		rules.add(rule);
+		target.add(rule);
 		return true;
 	}
 
@@ -342,7 +394,9 @@ final class LevelDraft {
 		for (TaskDraft task : allTasks()) task.after.remove(removed.id);
 		// правило, ждавшее удалённую задачу, сработает тогда, когда начиналась бы она
 		LevelEvent instead = removed.start != null ? removed.start : mission != null ? LevelEvent.missionStarted(mission.id) : LevelEvent.LEVEL_STARTED;
-		for (MechanicRule rule : rules) if (rule.when.subject().equals(removed.id) && (rule.when.kind() == LevelEvent.Kind.TASK_COMPLETED || rule.when.kind() == LevelEvent.Kind.TASK_STARTED)) rule.when = instead;
+		List<MechanicRule> all = new ArrayList<>(rules);
+		for (MissionDraft m : missions) all.addAll(m.rules);
+		for (MechanicRule rule : all) if (rule.when.subject().equals(removed.id) && (rule.when.kind() == LevelEvent.Kind.TASK_COMPLETED || rule.when.kind() == LevelEvent.Kind.TASK_STARTED)) rule.when = instead;
 	}
 
 	JsonObject missionJson(MissionDraft mission) throws TaskDraft.Invalid {
@@ -366,7 +420,27 @@ final class LevelDraft {
 		if (mission.resetWait > 0) json.addProperty("reset_wait", mission.resetWait);
 		if (!mission.guide.isEmpty()) json.addProperty("guide", "@" + mission.guide);
 		else if (mission.guideRaw != null) json.add("guide", mission.guideRaw);
+		JsonArray triggers = new JsonArray();
+		mission.otherTriggers.forEach(triggers::add);
+		for (MechanicRule rule : mission.rules) triggers.add(ruleJson(rule));
+		for (TaskDraft task : mission.tasks) if (task.outro != null) triggers.add(cutsceneTrigger(LevelEvent.taskCompleted(task.id).toString(), task.outro));
+		if (!triggers.isEmpty()) json.add("triggers", triggers);
 		return json;
+	}
+
+	private static JsonObject ruleJson(MechanicRule rule) throws TaskDraft.Invalid {
+		if (rule.action == null) throw new TaskDraft.Invalid(Component.translatable("gui.levelmod.rules.no_action"));
+		JsonObject then = new JsonObject();
+		then.addProperty("action", rule.action.toString());
+		parseArgs(rule.args).entrySet().forEach(e -> then.add(e.getKey(), e.getValue()));
+		JsonObject trigger = new JsonObject();
+		trigger.addProperty("when", rule.when.toString());
+		int ruleDelay = ticks(rule.delay);
+		if (ruleDelay > 0) trigger.addProperty("delay", ruleDelay);
+		if (rule.unless != null) trigger.addProperty("unless", rule.unless.toString());
+		if (rule.repeat) trigger.addProperty("repeat", true);
+		trigger.add("then", then);
+		return trigger;
 	}
 
 	private static JsonObject cutsceneTrigger(String when, Identifier cutscene) {
@@ -406,24 +480,8 @@ final class LevelDraft {
 		JsonArray triggers = new JsonArray();
 		otherTriggers.forEach(triggers::add);
 		if (intro != null) triggers.add(cutsceneTrigger(LevelEvent.LEVEL_STARTED.toString(), intro));
-		for (MechanicRule rule : rules) {
-			if (rule.action == null) throw new TaskDraft.Invalid(Component.translatable("gui.levelmod.rules.no_action"));
-			JsonObject then = new JsonObject();
-			then.addProperty("action", rule.action.toString());
-			parseArgs(rule.args).entrySet().forEach(e -> then.add(e.getKey(), e.getValue()));
-			JsonObject trigger = new JsonObject();
-			trigger.addProperty("when", rule.when.toString());
-			int ruleDelay = ticks(rule.delay);
-			if (ruleDelay > 0) trigger.addProperty("delay", ruleDelay);
-			if (rule.unless != null) trigger.addProperty("unless", rule.unless.toString());
-			if (rule.repeat) trigger.addProperty("repeat", true);
-			trigger.add("then", then);
-			triggers.add(trigger);
-		}
-		for (MissionDraft mission : missions) {
-			missionList.add(missionJson(mission));
-			for (TaskDraft task : mission.tasks) if (task.outro != null) triggers.add(cutsceneTrigger(LevelEvent.taskCompleted(task.id).toString(), task.outro));
-		}
+		for (MechanicRule rule : rules) triggers.add(ruleJson(rule));
+		for (MissionDraft mission : missions) missionList.add(missionJson(mission));
 		json.add("missions", missionList);
 		json.add("triggers", triggers);
 		if (!watches.isEmpty()) {

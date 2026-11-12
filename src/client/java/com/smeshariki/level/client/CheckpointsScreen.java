@@ -9,6 +9,7 @@ import com.smeshariki.ui.Ui;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -18,7 +19,7 @@ import net.minecraft.resources.Identifier;
  * привязать к одному персонажу (у каждого свой дом). Достигнутый чекпоинт важнее всех выше него: сброс возвращает на самый дальний из достигнутых.
  */
 final class CheckpointsScreen extends ListScreen {
-	private static final int W = 460, ROW = 24, H = 20, TOP = 44, WHO_W = 120, BUTTON_W = 20;
+	private static final int W = 460, ROW = 24, H = 20, TOP = 44, WHO_W = 110, BUTTON_W = 20, GEAR_W = 20;
 
 	private final LevelDraft level;
 	private final LevelDraft.MissionDraft mission;
@@ -59,7 +60,7 @@ final class CheckpointsScreen extends ListScreen {
 			int index = i;
 			LevelDraft.CheckpointDraft checkpoint = list.get(i);
 			int y = TOP + (i - bar.scroll) * ROW;
-			int placeW = w - WHO_W - 3 * BUTTON_W - 10;
+			int placeW = w - WHO_W - GEAR_W - 3 * BUTTON_W - 12;
 			addRenderableWidget(Button.builder(Component.literal((i + 1) + ". ").append(placeName(checkpoint)), b -> minecraft.gui.setScreen(new LocationPickerScreen(this, (Boolean) null, name -> {
 				if (name.isEmpty()) return;
 				checkpoint.location = name;
@@ -71,7 +72,11 @@ final class CheckpointsScreen extends ListScreen {
 				who.addAll(level.boundCharacters());
 				SelectScreen.open(this, Component.translatable("gui.levelmod.select.checkpoint_character"), who, CheckpointsScreen::characterName, checkpoint.character, c -> checkpoint.character = c);
 			}).bounds(x + placeW + 2, y, WHO_W, H).build());
-			int bx = x + placeW + WHO_W + 4;
+			// ячейки отката и действие при входе
+			boolean extra = !checkpoint.resets.isEmpty() || checkpoint.enterAction != null || checkpoint.enterRaw != null;
+			addRenderableWidget(Button.builder(Component.literal(extra ? "§e⚙" : "⚙"), b -> minecraft.gui.setScreen(new CheckpointScreen(this, checkpoint, index + 1)))
+					.bounds(x + placeW + WHO_W + 4, y, GEAR_W, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.checkpoints.settings"))).build());
+			int bx = x + placeW + WHO_W + GEAR_W + 6;
 			addMoveButtons(bx, y, i, list.size(), by -> move(index, by), Component.translatable("gui.levelmod.checkpoints.up"), Component.translatable("gui.levelmod.checkpoints.down"));
 			addDelete(bx + MOVE_W + 1, y, () -> {
 				list.remove(checkpoint);

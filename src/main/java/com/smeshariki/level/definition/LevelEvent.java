@@ -16,7 +16,7 @@ import net.minecraft.resources.Identifier;
  */
 public record LevelEvent(Kind kind, String subject) {
 	public enum Kind {
-		LEVEL_STARTED, LEVEL_COMPLETED, LEVEL_ABANDONED, MISSION_STARTED, MISSION_COMPLETED, TASK_STARTED, TASK_COMPLETED, TASK_FAILED, TASK_RESET, CUTSCENE_STARTED, CUTSCENE_FINISHED, CUSTOM, MISSION_RESET, MISSION_RESUMED, EXTERNAL;
+		LEVEL_STARTED, LEVEL_COMPLETED, LEVEL_ABANDONED, MISSION_STARTED, MISSION_COMPLETED, TASK_STARTED, TASK_COMPLETED, TASK_FAILED, TASK_RESET, CUTSCENE_STARTED, CUTSCENE_FINISHED, CUSTOM, MISSION_RESET, MISSION_RESUMED, CHECKPOINT_REACHED, CHECKPOINT_RESET, EXTERNAL;
 
 		private final String key = name().toLowerCase(Locale.ROOT);
 
@@ -45,6 +45,22 @@ public record LevelEvent(Kind kind, String subject) {
 	 */
 	public static LevelEvent missionResumed(String mission) {
 		return new LevelEvent(Kind.MISSION_RESUMED, mission);
+	}
+
+	/** Игрок вошёл в чекпоинт миссии (не в первый: первый — начало миссии); {@code номер} — позиция в списке чекпоинтов миссии, с 1. Видно только в миссии. */
+	public static LevelEvent checkpointReached(String mission, int number) {
+		return new LevelEvent(Kind.CHECKPOINT_REACHED, mission + ":" + number);
+	}
+
+	/** Игрока вернули (откат) на чекпоинт миссии с этим номером. Видно только в миссии: на нём запускают механики после отката (волна лавы и т. п.). */
+	public static LevelEvent checkpointReset(String mission, int number) {
+		return new LevelEvent(Kind.CHECKPOINT_RESET, mission + ":" + number);
+	}
+
+	/** Миссия, которой принадлежит событие чекпоинта, или пусто. */
+	public String checkpointMission() {
+		int colon = subject.lastIndexOf(':');
+		return (kind == Kind.CHECKPOINT_REACHED || kind == Kind.CHECKPOINT_RESET) && colon > 0 ? subject.substring(0, colon) : "";
 	}
 
 	public static LevelEvent missionCompleted(String mission) {

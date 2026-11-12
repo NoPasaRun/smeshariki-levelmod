@@ -93,6 +93,11 @@ final class AreaReset {
 		}
 	}
 
+	/** Нет ни заказанных, ни идущих возвратов блоков по версии мира. */
+	static boolean idle() {
+		return WAITING.isEmpty() && QUEUE.isEmpty();
+	}
+
 	static void clear() {
 		VERSIONS.clear();
 		WAITING.clear();

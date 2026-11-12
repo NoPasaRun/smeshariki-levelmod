@@ -26,6 +26,7 @@ import net.minecraft.world.phys.Vec3;
  *             начале миссии, блоки — к текущей версии мира (BuildMod, V).
  * @param checkpoints поле {@code checkpoints}: чекпоинты миссии по приоритету ({@link Checkpoint}), не меньше двух: начало и конец. В начале миссии каждый участник
  *                    не на первом своём чекпоинте переносится туда (задачи и сброс считают его началом); сброс (граница, гибель) возвращает на самый дальний достигнутый
+ * @param triggers поле {@code triggers}: события и триггеры миссии. Видны и работают только в её рамках (события её задач, начала, конца, сброса и чекпоинтов; события механик); идут, пока миссия началась и не закончилась (включая своё событие конца). События других миссий и уровня сюда не пишутся
  * @param orders поле {@code orders}: реплики напарнику ({@link com.smeshariki.level.definition.OrderEntry}), которые игрок может выбрать в окне реплик,
  *               пока идёт миссия. Без них окно в миссии не открывается
  * @param gear поле {@code gear}: что надето на персонажа в начале миссии (тип → предметы одежды). Надевается, если слот пуст и такого предмета у
@@ -36,7 +37,7 @@ import net.minecraft.world.phys.Vec3;
  *              без поля стрелка показывает на область идущей задачи «добраться до области» (клиент рисует её сам, {@code GuideArrow})
  */
 public record MissionEntry(String id, Component title, Component description, List<TaskEntry> tasks, Optional<TaskArea> area, List<Checkpoint> checkpoints, List<com.smeshariki.level.definition.OrderEntry> orders,
-		Map<Identifier, List<Identifier>> gear, int resetWait, Optional<Either<Vec3, TaskArea>> guide) {
+		Map<Identifier, List<Identifier>> gear, int resetWait, Optional<Either<Vec3, TaskArea>> guide, List<com.smeshariki.level.definition.Trigger> triggers) {
 	/** Ближе этого к точке-чекпоинту игрок «на чекпоинте» (его не переносят, он засчитан), блоков по горизонтали. */
 	public static final double START_RADIUS = 4;
 	private static final Codec<Either<Vec3, TaskArea>> PLACE = Checkpoint.PLACE;
@@ -52,9 +53,10 @@ public record MissionEntry(String id, Component title, Component description, Li
 			com.smeshariki.level.definition.OrderEntry.CODEC.listOf().optionalFieldOf("orders", List.of()).forGetter(MissionEntry::orders),
 			Codec.unboundedMap(Identifier.CODEC, net.minecraft.util.ExtraCodecs.compactListCodec(Identifier.CODEC)).optionalFieldOf("gear", Map.of()).forGetter(MissionEntry::gear),
 			Codec.intRange(0, 60).optionalFieldOf("reset_wait", 0).forGetter(MissionEntry::resetWait),
-			PLACE.optionalFieldOf("guide").forGetter(MissionEntry::guide)
-	).apply(i, (id, title, description, tasks, area, legacyRestore, checkpoints, orders, gear, resetWait, guide) ->
-			new MissionEntry(id, title, description, tasks, area.or(() -> legacyRestore), checkpoints, orders, gear, resetWait, guide)));
+			PLACE.optionalFieldOf("guide").forGetter(MissionEntry::guide),
+			com.smeshariki.level.definition.Trigger.CODEC.listOf().optionalFieldOf("triggers", List.of()).forGetter(MissionEntry::triggers)
+	).apply(i, (id, title, description, tasks, area, legacyRestore, checkpoints, orders, gear, resetWait, guide, triggers) ->
+			new MissionEntry(id, title, description, tasks, area.or(() -> legacyRestore), checkpoints, orders, gear, resetWait, guide, triggers)));
 
 	/** Чекпоинты этого персонажа по приоритету: общие и его собственные (кто неизвестен — только общие). Первый — начало, последний — конец. */
 	public List<Checkpoint> checkpointsFor(@Nullable Identifier role) {
