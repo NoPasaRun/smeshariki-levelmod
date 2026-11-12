@@ -15,7 +15,11 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -60,6 +64,10 @@ final class GuideArrow {
 	/** Игрок скрыл стрелку (кнопка в окне «О миссии» или клавиша). */
 	static boolean hidden;
 	private static boolean on;
+	/** Включён шейдерпак Iris (проверяется раз в тик). */
+	private static boolean shaders;
+	/** Рисовать стрелку на экране и без шейдерпака (для проверки внешнего вида). */
+	static boolean forceHud;
 	private static double targetX, targetZ;
 	private static float strength;
 	private static RenderType onTop;
@@ -108,6 +116,9 @@ final class GuideArrow {
 			if (strength < 0.01f && want == 0f) strength = 0f;
 		});
 		LevelRenderEvents.COLLECT_SUBMITS.register(GuideArrow::submit);
+		// с шейдерпаком Iris своя геометрия мира не рисуется (конвейер стрелки ему неизвестен): стрелка идёт на экран, как компас
+		HudElementRegistry.attachElementAfter(VanillaHudElements.CROSSHAIR, Identifier.fromNamespaceAndPath(LevelMod.NAMESPACE, "guide_arrow"), GuideArrow::extractHud);
+		ClientTickEvents.END_CLIENT_TICK.register(mc -> shaders = forceHud || shaderPackInUse());
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> clear());
 	}
 
@@ -126,9 +137,46 @@ final class GuideArrow {
 		return Math.hypot(targetX - at.x, targetZ - at.z);
 	}
 
+	/** Идёт ли отрисовка шейдерпаком Iris; без Iris — нет. */
+	private static boolean shaderPackInUse() {
+		try {
+			Object api = Class.forName("net.irisshaders.iris.api.v0.IrisApi").getMethod("getInstance").invoke(null);
+			return (boolean) api.getClass().getMethod("isShaderPackInUse").invoke(api);
+		} catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+			return false;
+		}
+	}
+
+	/** Стрелка на экране под прицелом: поворачивается к цели относительно взгляда. */
+	private static void extractHud(GuiGraphicsExtractor g, DeltaTracker delta) {
+		Minecraft mc = Minecraft.getInstance();
+		if (!shaders || strength <= 0f || mc.player == null || mc.level == null) return;
+		Entity body = mc.player.getRootVehicle();
+		double dx = targetX - body.getX(), dz = targetZ - body.getZ();
+		if (Math.hypot(dx, dz) < 1e-3) return;
+		float partial = delta.getGameTimeDeltaPartialTick(false);
+		double relative = Math.atan2(-dx, dz) - Math.toRadians(mc.player.getViewYRot(partial));
+		int pixel = 4;
+		g.pose().pushMatrix();
+		g.pose().translate(g.guiWidth() / 2f, g.guiHeight() / 2f + 46f);
+		// рисунок смотрит вправо, а на экране «вперёд» — вверх
+		g.pose().rotate((float) (relative - Math.PI / 2));
+		for (int r = 0; r < ROWS; r++) {
+			for (int col = 0; col < COLS; col++) {
+				if (!filled(col, r)) continue;
+				boolean edge = !filled(col - 1, r) || !filled(col + 1, r) || !filled(col, r - 1) || !filled(col, r + 1);
+				int rgb = edge ? OUTLINE : (col + r) % 2 == 0 ? FILL : FILL_ALT;
+				int alpha = (int) (Math.min(255, (edge ? ALPHA_EDGE : ALPHA + 40) * strength * 1.2f));
+				int x = (int) ((col - COLS / 2f) * pixel), y = (int) ((r - ROWS / 2f) * pixel);
+				g.fill(x, y, x + pixel, y + pixel, (alpha << 24) | rgb);
+			}
+		}
+		g.pose().popMatrix();
+	}
+
 	private static void submit(LevelRenderContext ctx) {
 		Minecraft mc = Minecraft.getInstance();
-		if (strength <= 0f || mc.player == null || mc.level == null) return;
+		if (shaders || strength <= 0f || mc.player == null || mc.level == null) return;
 		Entity body = mc.player.getRootVehicle();
 		double dx = targetX - body.getX(), dz = targetZ - body.getZ();
 		double length = Math.hypot(dx, dz);
