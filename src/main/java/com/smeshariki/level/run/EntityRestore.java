@@ -38,7 +38,7 @@ final class EntityRestore {
 	/** Заменяет сущности чанка версионными; возвращает, сколько ваниль не приняла (UUID ещё занят) — тогда звать позже ещё раз. */
 	static int apply(ServerLevel level, ChunkPos pos, List<CompoundTag> tags) {
 		AABB box = new AABB(pos.getMinBlockX(), level.getMinY(), pos.getMinBlockZ(), pos.getMaxBlockX() + 1, level.getMaxY(), pos.getMaxBlockZ() + 1);
-		for (Entity entity : level.getEntities((Entity) null, box, e -> !isProtected(e) && e.chunkPosition().equals(pos))) entity.discard();
+		for (Entity entity : level.getEntities((Entity) null, box, e -> !isProtected(e) && e.chunkPosition().equals(pos))) com.smeshariki.gameplay.raft.BalloonSnapshots.discardQuietly(entity);
 		int failed = 0;
 		EntitySpawnRequest request = new EntitySpawnRequest(EntitySpawnReason.LOAD, true);
 		for (CompoundTag tag : tags) {

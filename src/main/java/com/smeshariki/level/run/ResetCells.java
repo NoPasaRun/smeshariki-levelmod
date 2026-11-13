@@ -174,7 +174,7 @@ final class ResetCells {
 		for (Tag t : list) if (t instanceof CompoundTag c) c.read("UUID", net.minecraft.core.UUIDUtil.CODEC).ifPresent(kept::add);
 		// появившееся после снимка этого вида — лишнее
 		for (Entity entity : level.getEntities((Entity) null, box(level, area), e -> e.getType() == type && accepts(e) && area.contains(e.position()))) {
-			if (!kept.contains(entity.getUUID())) entity.discard();
+			if (!kept.contains(entity.getUUID())) BalloonSnapshots.discardQuietly(entity);
 		}
 		if (list.isEmpty()) return;
 		CompoundTag snapshot = new CompoundTag();
