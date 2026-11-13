@@ -262,6 +262,11 @@ final class ResetCells {
 		}
 	}
 
+	/** Нет ни ждущих, ни идущих возвратов ячеек. */
+	static boolean idle() {
+		return WAITING.isEmpty() && QUEUE.isEmpty();
+	}
+
 	static void clear() {
 		QUEUE.clear();
 		WAITING.clear();

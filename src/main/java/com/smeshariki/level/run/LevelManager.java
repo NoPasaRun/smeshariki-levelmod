@@ -188,6 +188,7 @@ public final class LevelManager {
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			AreaReset.clear();
 			ResetCells.clear();
+			AreaCleanup.clear();
 			WorldReset.clear();
 			for (UUID id : List.copyOf(SPECTATORS.keySet())) stopSpectating(server, id, false);
 			HOLD_PENDING.clear();
@@ -286,6 +287,8 @@ public final class LevelManager {
 	 */
 	private static void initGear() {
 		ServerLifecycleEvents.SERVER_STARTED.register(s -> server = s);
+		// верёвки (тарзанки) из снимка ставятся после возврата блоков области: им нужны блоки, на которых они держатся
+		com.smeshariki.gameplay.raft.BalloonSnapshots.setRestoreGate(() -> !AreaReset.idle() || !ResetCells.idle());
 		ServerLifecycleEvents.SERVER_STOPPED.register(s -> server = null);
 		CharacterEntity.setGearKeeper((player, gear) -> {
 			if (server == null) return false;
@@ -934,6 +937,7 @@ public final class LevelManager {
 		syncMechanics(server, store);
 		AreaReset.tick(server);
 		ResetCells.tick(server);
+		AreaCleanup.tick(server);
 		WorldReset.tick(server);
 		syncGuides(server);
 		if (syncNeeded && server.getTickCount() % SYNC_INTERVAL == 0) {
@@ -1292,6 +1296,7 @@ public final class LevelManager {
 		@Override
 		public void resetBlocks(TaskArea area) {
 			AreaReset.reset(server, area);
+			AreaCleanup.request(server, area);
 		}
 
 		@Override
