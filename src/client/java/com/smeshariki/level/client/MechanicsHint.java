@@ -56,6 +56,7 @@ final class MechanicsHint {
 	}
 
 	private static void extract(GuiGraphicsExtractor g, DeltaTracker delta) {
+		if (com.smeshariki.behavior.client.CutsceneClient.hidesHud()) return;
 		if (!available) return;
 		Minecraft mc = Minecraft.getInstance();
 		Font font = mc.font;

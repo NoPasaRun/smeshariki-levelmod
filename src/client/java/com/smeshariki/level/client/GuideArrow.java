@@ -111,7 +111,7 @@ final class GuideArrow {
 				strength = 0f;
 				return;
 			}
-			float want = on && !hidden && !WaitOverlay.active() && !mc.player.isSpectator() && distance(mc) > ARRIVED ? 1f : 0f;
+			float want = on && !hidden && !WaitOverlay.active() && !com.smeshariki.behavior.client.CutsceneClient.hidesHud() && !mc.player.isSpectator() && distance(mc) > ARRIVED ? 1f : 0f;
 			strength += (want - strength) * FADE;
 			if (strength < 0.01f && want == 0f) strength = 0f;
 		});

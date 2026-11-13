@@ -56,7 +56,7 @@ final class TaskHud {
 
 	private static void extract(GuiGraphicsExtractor g, DeltaTracker delta) {
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.player == null) return;
+		if (mc.player == null || com.smeshariki.behavior.client.CutsceneClient.hidesHud()) return;
 		List<LevelList.LevelInfo> running = running(mc);
 		int y = chip(g, mc.font, running) + GAP;
 		if (!ClientLevels.testTasks.isEmpty()) y = panel(g, mc.font, y, Component.translatable("gui.levelmod.hud.test", ""), null, -1, 0, ClientLevels.testTasks);
