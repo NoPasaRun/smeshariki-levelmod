@@ -53,8 +53,11 @@ final class MechanicRulesScreen extends ListScreen {
 		return Math.max(1, (height - TOP - 34) / ROW);
 	}
 
-	private static List<Identifier> actions() {
-		List<Identifier> all = new ArrayList<>(Mechanics.actions().keySet());
+	/** Действия для выбора: механики; в событиях уровня (и только там) ещё показ кат-сцены. */
+	private List<Identifier> actions() {
+		List<Identifier> all = new ArrayList<>();
+		if (scope == null) all.add(LevelDraft.MechanicRule.PLAY_CUTSCENE);
+		all.addAll(Mechanics.actions().keySet());
 		all.addAll(Mechanics.toggles().keySet());
 		return all;
 	}
@@ -113,7 +116,11 @@ final class MechanicRulesScreen extends ListScreen {
 			int ax = x + whenW + subjectW + 4;
 			addRenderableWidget(Button.builder(rule.action == null ? Component.translatable("gui.levelmod.rules.no_action") : mechanicName(rule.action),
 					b -> SelectScreen.open(this, Component.translatable("gui.levelmod.select.action"), actions(),
-							id -> mechanicName(id).copy().append(Component.literal("  " + id).withStyle(net.minecraft.ChatFormatting.GRAY)), rule.action, id -> rule.action = id)).bounds(ax, y, actionW, H).tooltip(Tooltip.create(rule.action == null ? Component.empty() : Component.literal(rule.action.toString()))).build());
+							id -> mechanicName(id).copy().append(Component.literal("  " + id).withStyle(net.minecraft.ChatFormatting.GRAY)), rule.action, id -> {
+						rule.action = id;
+						// у показа кат-сцены один параметр: подставляем первую, остальное выбирают в поле
+						if (id.equals(LevelDraft.MechanicRule.PLAY_CUTSCENE) && !rule.args.contains("cutscene=") && !ClientLevels.cutscenes.isEmpty()) rule.args = "cutscene=" + ClientLevels.cutscenes.getFirst();
+					})).bounds(ax, y, actionW, H).tooltip(Tooltip.create(rule.action == null ? Component.empty() : Component.literal(rule.action.toString()))).build());
 			addRenderableWidget(LevelEditorScreen.field(this, font, ax + actionW + 2, y, argsW, "gui.levelmod.rules.args", rule.args, 256, v -> rule.args = v));
 			addRenderableWidget(LevelEditorScreen.field(this, font, ax + actionW + argsW + 4, y, delayW, "gui.levelmod.rules.delay", rule.delay, 8, v -> rule.delay = v));
 			int ux = ax + actionW + argsW + delayW + 6;
@@ -140,7 +147,9 @@ final class MechanicRulesScreen extends ListScreen {
 		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.rules.add"), b -> {
 			LevelDraft.MechanicRule rule = new LevelDraft.MechanicRule();
 			if (scope != null) rule.when = LevelEvent.missionStarted(scope.id);
-			List<Identifier> all = actions();
+			// новое правило — механика, а не кат-сцена: у неё есть смысл без параметров
+			List<Identifier> all = new ArrayList<>(actions());
+			all.remove(LevelDraft.MechanicRule.PLAY_CUTSCENE);
 			if (!all.isEmpty()) rule.action = all.getFirst();
 			rules().add(rule);
 			bar.scroll = Math.max(0, rules().size() - visible());

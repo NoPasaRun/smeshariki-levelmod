@@ -64,7 +64,6 @@
 	"gui.levelmod.editor.preview": "Preview texture, e.g. levelmod:textures/gui/level/x.png",
 	"gui.levelmod.editor.min_players": "Min players: %s",
 	"gui.levelmod.editor.max_players": "Max players: %s",
-	"gui.levelmod.editor.intro": "Opening cutscene: %s",
 	"gui.levelmod.editor.none": "none",
 	"gui.levelmod.editor.save": "Save",
 	"gui.levelmod.editor.cancel": "Cancel",
@@ -180,6 +179,7 @@
 	"gui.levelmod.rules.empty": "No rules",
 	"gui.levelmod.rules.repeat": "Mechanic event: fires every time it happens",
 	"gui.levelmod.rules.once": "Fires once per run",
+	"mechanic.levelmod.play_cutscene": "Play cutscene",
 	"gui.levelmod.rules.no_action": "No action chosen",
 	"gui.levelmod.rules.bad_args": "Parameter without '=': %s",
 	"gui.levelmod.conditions": "Checks: %s",
@@ -277,10 +277,5 @@
 	"gui.levelmod.checkpoint.kind.entity": "Entities of one type",
 	"gui.levelmod.checkpoint.kind.clear": "Clear cell",
 	"gui.levelmod.checkpoint.cell.pick.block": "Which block",
-	"gui.levelmod.checkpoint.cell.pick.entity": "Which entity",
-	"gui.levelmod.checkpoint.enter": "On entering: %s",
-	"gui.levelmod.checkpoint.enter.none": "nothing",
-	"gui.levelmod.checkpoint.enter.custom": "custom (from file)",
-	"gui.levelmod.checkpoint.enter.tip": "Mechanic started when a player enters the checkpoint (not the first one: it is the mission start)",
-	"gui.levelmod.checkpoint.enter.title": "Action on entering the checkpoint"
+	"gui.levelmod.checkpoint.cell.pick.entity": "Which entity"
 }

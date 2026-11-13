@@ -106,8 +106,6 @@ final class LevelEditorScreen extends UiScreen {
 			draft.maxPlayers = draft.maxPlayers >= MAX_PLAYERS ? draft.minPlayers : draft.maxPlayers + 1;
 			rebuildWidgets();
 		}).bounds(x + 80, y, 78, H).build());
-		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.editor.intro", cutsceneName(draft.intro)),
-				b -> SelectScreen.open(this, Component.translatable("gui.levelmod.select.cutscene"), cutsceneOptions(), LevelEditorScreen::cutsceneName, draft.intro, c -> draft.intro = c)).bounds(x + 160, y, W - 160, H).build());
 		y += ROW;
 		// никто не отмечен — подходит любой
 		var types = Possession.choices();

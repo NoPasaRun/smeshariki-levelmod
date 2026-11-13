@@ -3,10 +3,8 @@ package com.smeshariki.level.client;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.smeshariki.gameplay.api.Mechanics;
 import com.smeshariki.level.task.ResetCell;
 import com.smeshariki.ui.SelectScreen;
-import com.smeshariki.ui.Ui;
 import com.smeshariki.ui.UiScreen;
 
 import net.minecraft.client.Minecraft;
@@ -18,9 +16,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 /**
- * Один чекпоинт миссии: восемь ячеек отката и действие при входе. В ячейку кладётся вид блока или сущности: при входе игрока в чекпоинт все такие в области миссии
- * запоминаются (сверх общего снимка подвижного), а откат на этот чекпоинт возвращает их. Действие при входе — механика с параметрами (как правило события);
- * событие «вход в чекпоинт» и «откат на чекпоинт» для других механик берётся в окне событий миссии.
+ * Один чекпоинт миссии: восемь ячеек отката. В ячейку кладётся вид блока или сущности: при входе игрока в чекпоинт все такие в области миссии
+ * запоминаются (сверх общего снимка подвижного), а откат на этот чекпоинт возвращает их. События «вход в чекпоинт» и «откат на чекпоинт» для механик берутся
+ * в окне событий миссии; действия при входе в самом чекпоинте нет (2026-11-13, решение пользователя), поле {@code on_enter} в файле читается и сохраняется, но не показывается.
  */
 final class CheckpointScreen extends UiScreen {
 	private static final int W = 440, COLUMNS = 4, CELL_H = 24, TOP = 48;
@@ -43,10 +41,6 @@ final class CheckpointScreen extends UiScreen {
 		return Component.translatable("gui.levelmod.checkpoint.cell." + (cell.kind() == ResetCell.Kind.BLOCK ? "block" : "entity"), cellName(cell));
 	}
 
-	private static Component mechanicName(Identifier id) {
-		return MechanicRulesScreen.mechanicName(id);
-	}
-
 	@Override
 	protected void init() {
 		int w = panelWidth(W), x = centered(w), gap = 2;
@@ -62,26 +56,6 @@ final class CheckpointScreen extends UiScreen {
 					.tooltip(Tooltip.create(cell == null ? Component.translatable("gui.levelmod.checkpoint.cell.tip") : Component.literal(cell.type().toString()))).build();
 			button.active = cell != null || next;
 			addRenderableWidget(button);
-		}
-		int y = TOP + 2 * (CELL_H + gap) + 18;
-		int half = (w - 2) / 2;
-		Component none = Component.translatable("gui.levelmod.checkpoint.enter.none");
-		Component enter = checkpoint.enterRaw != null ? Component.translatable("gui.levelmod.checkpoint.enter.custom") : checkpoint.enterAction == null ? none : mechanicName(checkpoint.enterAction);
-		Button action = Button.builder(Component.translatable("gui.levelmod.checkpoint.enter", enter), b -> {
-			List<Identifier> all = new ArrayList<>();
-			all.add(null);
-			all.addAll(Mechanics.actions().keySet());
-			all.addAll(Mechanics.toggles().keySet());
-			SelectScreen.open(this, Component.translatable("gui.levelmod.select.action"), all, id -> id == null ? none : mechanicName(id).copy().append(Component.literal("  " + id).withStyle(net.minecraft.ChatFormatting.GRAY)),
-					checkpoint.enterAction, id -> {
-						checkpoint.enterAction = id;
-						checkpoint.enterRaw = null;
-					});
-		}).bounds(x, y, half, Ui.BUTTON_H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.checkpoint.enter.tip"))).build();
-		action.active = checkpoint.enterRaw == null;
-		addRenderableWidget(action);
-		if (checkpoint.enterAction != null) {
-			addRenderableWidget(LevelEditorScreen.field(this, font, x + half + 2, y, half, "gui.levelmod.rules.args", checkpoint.enterArgs, 256, v -> checkpoint.enterArgs = v));
 		}
 		addBack(x + w / 4, height - 26, w / 2);
 	}
@@ -122,7 +96,5 @@ final class CheckpointScreen extends UiScreen {
 	public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
 		super.extractRenderState(g, mouseX, mouseY, delta);
 		drawHeader(g, Component.translatable("gui.levelmod.checkpoint.hint"));
-		int y = TOP + 2 * 26 + 6;
-		g.centeredText(font, Component.translatable("gui.levelmod.checkpoint.enter.title"), width / 2, y, Ui.DIM);
 	}
 }

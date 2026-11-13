@@ -28,6 +28,9 @@ final class LevelDraft {
 	 * события случаются много раз (волна с одного берега кончилась — пустить с другого).
 	 */
 	static final class MechanicRule {
+		/** Действие уровня «показать кат-сцену» (параметр {@code cutscene}): в файле оно записано как {@code play_cutscene}, без пространства имён. Только в событиях уровня. */
+		static final Identifier PLAY_CUTSCENE = Identifier.fromNamespaceAndPath("levelmod", "play_cutscene");
+
 		LevelEvent when = LevelEvent.LEVEL_STARTED;
 		Identifier action;
 		String args = "";
@@ -162,7 +165,6 @@ final class LevelDraft {
 	/** Точка начала уровня, локация-точка: пусто — не задана. */
 	String start = "";
 	int minPlayers = 1, maxPlayers = 1, order;
-	Identifier intro;
 	/** За кого можно проходить; пусто — за любого. */
 	final List<Identifier> characters = new ArrayList<>();
 	/** Откуда начинает каждый персонаж: локация-точка. */
@@ -255,10 +257,6 @@ final class LevelDraft {
 		if (!"play_cutscene".equals(text(then, "action", ""))) return false;
 		Identifier cutscene = Identifier.parse(text(then, "cutscene", ""));
 		String when = trigger.get("when").getAsString();
-		if (mission == null && when.equals(LevelEvent.LEVEL_STARTED.toString())) {
-			intro = cutscene;
-			return true;
-		}
 		String prefix = LevelEvent.taskCompleted("").toString();
 		TaskDraft task = when.startsWith(prefix) ? task(when.substring(prefix.length())) : null;
 		if (task == null || mission != null && !mission.tasks.contains(task)) return false;
@@ -271,7 +269,9 @@ final class LevelDraft {
 		if (!trigger.get("when").isJsonPrimitive() || !trigger.get("then").isJsonObject()) return false;
 		JsonObject then = trigger.getAsJsonObject("then");
 		String type = text(then, "action", "");
-		Identifier action = type.indexOf(':') > 0 ? Identifier.tryParse(type) : null;
+		// кат-сцена — действие уровня; в событиях миссии остаётся «прочим» (там её нет)
+		boolean cutscene = type.equals("play_cutscene") && target == rules;
+		Identifier action = cutscene ? MechanicRule.PLAY_CUTSCENE : type.indexOf(':') > 0 ? Identifier.tryParse(type) : null;
 		if (action == null) return false;
 		List<String> args = new ArrayList<>();
 		for (var entry : then.entrySet()) {
@@ -431,7 +431,7 @@ final class LevelDraft {
 	private static JsonObject ruleJson(MechanicRule rule) throws TaskDraft.Invalid {
 		if (rule.action == null) throw new TaskDraft.Invalid(Component.translatable("gui.levelmod.rules.no_action"));
 		JsonObject then = new JsonObject();
-		then.addProperty("action", rule.action.toString());
+		then.addProperty("action", rule.action.equals(MechanicRule.PLAY_CUTSCENE) ? "play_cutscene" : rule.action.toString());
 		parseArgs(rule.args).entrySet().forEach(e -> then.add(e.getKey(), e.getValue()));
 		JsonObject trigger = new JsonObject();
 		trigger.addProperty("when", rule.when.toString());
@@ -479,7 +479,6 @@ final class LevelDraft {
 		JsonArray missionList = new JsonArray();
 		JsonArray triggers = new JsonArray();
 		otherTriggers.forEach(triggers::add);
-		if (intro != null) triggers.add(cutsceneTrigger(LevelEvent.LEVEL_STARTED.toString(), intro));
 		for (MechanicRule rule : rules) triggers.add(ruleJson(rule));
 		for (MissionDraft mission : missions) missionList.add(missionJson(mission));
 		json.add("missions", missionList);

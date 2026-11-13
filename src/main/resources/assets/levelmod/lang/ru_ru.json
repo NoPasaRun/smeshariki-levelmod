@@ -64,7 +64,6 @@
 	"gui.levelmod.editor.preview": "Текстура превью, например levelmod:textures/gui/level/x.png",
 	"gui.levelmod.editor.min_players": "Игроков от: %s",
 	"gui.levelmod.editor.max_players": "Игроков до: %s",
-	"gui.levelmod.editor.intro": "Кат-сцена в начале: %s",
 	"gui.levelmod.editor.none": "нет",
 	"gui.levelmod.editor.save": "Сохранить",
 	"gui.levelmod.editor.cancel": "Отмена",
@@ -180,6 +179,7 @@
 	"gui.levelmod.rules.empty": "Правил нет",
 	"gui.levelmod.rules.repeat": "Событие механики: срабатывает каждый раз, когда оно случается",
 	"gui.levelmod.rules.once": "Срабатывает один раз за прохождение",
+	"mechanic.levelmod.play_cutscene": "Показать кат-сцену",
 	"gui.levelmod.rules.no_action": "Не выбрано действие",
 	"gui.levelmod.rules.bad_args": "Параметр без «=»: %s",
 	"gui.levelmod.conditions": "Проверки: %s",
@@ -277,10 +277,5 @@
 	"gui.levelmod.checkpoint.kind.entity": "Сущности одного вида",
 	"gui.levelmod.checkpoint.kind.clear": "Очистить ячейку",
 	"gui.levelmod.checkpoint.cell.pick.block": "Какой блок",
-	"gui.levelmod.checkpoint.cell.pick.entity": "Какая сущность",
-	"gui.levelmod.checkpoint.enter": "При входе: %s",
-	"gui.levelmod.checkpoint.enter.none": "ничего",
-	"gui.levelmod.checkpoint.enter.custom": "особое (из файла)",
-	"gui.levelmod.checkpoint.enter.tip": "Механика, которая запускается, когда игрок входит в чекпоинт (не в первый: он — начало миссии)",
-	"gui.levelmod.checkpoint.enter.title": "Действие при входе в чекпоинт"
+	"gui.levelmod.checkpoint.cell.pick.entity": "Какая сущность"
 }

@@ -268,6 +268,19 @@ public final class LevelManager {
 			Vec3 drawn = area.drawnCenter();
 			return Optional.of(new Singletons.Home(area.dimension(), drawn != null ? host.floorNear(area.dimension(), drawn) : host.groundAt(area.dimension(), area.center())));
 		});
+		// Нюша зовёт только тех, кто не занят уровнем или занят тем же, в котором она сама
+		com.smeshariki.gameplay.character.Skills.setCallFilter((caller, type) -> {
+			MinecraftServer server = caller.level().getServer();
+			Identifier id = EntityType.getKey(type);
+			List<LevelRun> mine = runsOf(caller);
+			for (LevelRun run : allRuns(server)) {
+				if (run.state() != LevelRun.State.RUNNING || mine.contains(run)) continue;
+				if (run.companions().contains(id) || run.participants().stream().anyMatch(p -> id.equals(run.roleOf(p.id())))) return false;
+				CharacterEntity body = Singletons.find(server, type);
+				if (body != null && body.getControllingPassenger() instanceof ServerPlayer rider && run.hasParticipant(rider.getUUID())) return false;
+			}
+			return true;
+		});
 		Possession.setAutoChoice(player -> {
 			for (LevelRun run : runsOf(player)) {
 				if (run.state() != LevelRun.State.RUNNING) continue;
@@ -721,6 +734,12 @@ public final class LevelManager {
 		// остановить свою проверку можно и в выживании (проверка переключает в него), начать — только тому, кто может править
 		if (!canEdit(player) && !(command.missionJson().isEmpty() && TESTS.containsKey(player.getUUID()))) return;
 		MinecraftServer server = player.level().getServer();
+		// как у обычного уровня: пока мир откатывается после прошлого (блоки и сущности, в том числе маркеры волн лавы, создаются заново), начинать нельзя.
+		// Идущая проверка откат не запускает (он ждёт её конца), так что отказ касается только отката после уже законченного
+		if (command.missionJson().isPresent() && WorldReset.busy(server) && !testing()) {
+			player.sendOverlayMessage(Component.translatable("message.levelmod.refuse.world_reset"));
+			return;
+		}
 		LevelRun previous = TESTS.remove(player.getUUID());
 		// остановленная проверка возвращает постройки миссии из снимка, как брошенный уровень: иначе лава осталась бы поднятой, маркеры волн сдвинутыми,
 		// и следующая проверка или запись сняла бы уже испорченную пещеру
