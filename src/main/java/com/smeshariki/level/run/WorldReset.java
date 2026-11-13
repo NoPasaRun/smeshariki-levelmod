@@ -80,7 +80,7 @@ final class WorldReset {
 	private static final int MAX_WAITING = 24;
 	private static boolean rerun;
 	private static int lastPercent = -1;
-	/** Откат по просьбе из окна версий (V, ManagementMod): весь мир по версии, с сущностями, без отметки в {@link LevelStore}; идёт, пока {@code manual}. Только в памяти. */
+	/** Откат по просьбе из окна версий (V, SmesharikiMod): весь мир по версии, с сущностями, без отметки в {@link LevelStore}; идёт, пока {@code manual}. Только в памяти. */
 	private static boolean manual;
 	private static java.util.function.IntConsumer manualProgress;
 	private static java.util.function.Consumer<String> manualDone;

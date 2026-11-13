@@ -14,7 +14,7 @@ import java.util.Map;
 
 import org.jetbrains.annotations.Nullable;
 
-import com.managementmod.versions.WorldVersions;
+import com.smeshariki.mod.versions.WorldVersions;
 
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
@@ -37,7 +37,7 @@ import net.minecraft.world.level.chunk.storage.RegionFileVersion;
 import net.minecraft.world.level.chunk.storage.SerializableChunkData;
 
 /**
- * Блоки из текущей версии мира (ManagementMod, клавиша V) для откатов ({@link AreaReset}, {@link WorldReset}): чтение чанков версии и возврат блоков
+ * Блоки из текущей версии мира (SmesharikiMod, клавиша V) для откатов ({@link AreaReset}, {@link WorldReset}): чтение чанков версии и возврат блоков
  * в живом мире, без сущностей. Версия читается через {@link WorldVersions}: формата файлов истории этот мод не знает.
  */
 public final class BlockRestore {
@@ -202,7 +202,7 @@ public final class BlockRestore {
 
 	// ---------------------------------------------------------------- чтение версии
 
-	/** Файлы текущей версии мира (путь → хеш); {@code null} — версии нет. Формат хранения знает ManagementMod, не этот мод. */
+	/** Файлы текущей версии мира (путь → хеш); {@code null} — версии нет. Формат хранения знает SmesharikiMod, не этот мод. */
 	static @Nullable Map<String, String> versionFiles(Path root) throws IOException {
 		return WorldVersions.currentFiles(root);
 	}

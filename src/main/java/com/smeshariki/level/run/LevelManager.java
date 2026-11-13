@@ -114,7 +114,7 @@ public final class LevelManager {
 		initSingletons();
 		initGear();
 		// откат версии из окна V идёт тем же движком, что откат после уровня: без остановки мира
-		com.managementmod.versions.WorldVersions.liveRollback(WorldReset::beginManual);
+		com.smeshariki.mod.versions.WorldVersions.liveRollback(WorldReset::beginManual);
 		PayloadTypeRegistry.serverboundPlay().register(LevelCommand.TYPE, LevelCommand.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(LevelSave.TYPE, LevelSave.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(LevelList.TYPE, LevelList.CODEC);

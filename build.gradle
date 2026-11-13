@@ -21,8 +21,6 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-	// UiLib (общий интерфейс: Scroller, ListScreen, SelectScreen, палитра): собранный jar лежит рядом, собирать его первым.
-	implementation files("../UiLib/build/libs/uilib-1.0.0.jar")
 	// GameplayMod (персонажи, CharacterPose): собранный jar лежит рядом. Пересобирайте его (./gradlew jar в GameplayMod) перед сборкой этого мода.
 	implementation files("../GameplayMod/build/libs/gameplaymod-1.0.0.jar")
 	// BehaviorMod (напарник, приказы, окно реплик): так же, пересобирайте его перед сборкой этого мода.
@@ -30,7 +28,7 @@ dependencies {
 	// BuildMod (рисование контура, OutlineDrawing): так же, пересобирайте его перед сборкой этого мода.
 	implementation files("../BuildMod/build/libs/buildmod-1.0.0.jar")
 	// версии мира: возврат блоков читает текущую версию через API
-	implementation files("../ManagementMod/build/libs/managementmod-1.0.0.jar")
+	implementation files("../SmesharikiMod/build/libs/smesharikimod-1.0.0.jar")
 }
 
 processResources {

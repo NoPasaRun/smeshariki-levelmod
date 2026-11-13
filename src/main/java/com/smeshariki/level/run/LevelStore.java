@@ -168,7 +168,7 @@ public final class LevelStore extends SavedData {
 		java.nio.file.Path world = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).toAbsolutePath().normalize();
 		String name = world.getFileName() == null ? "world" : world.getFileName().toString();
 		placesFile = com.smeshariki.level.ModData.moved(com.smeshariki.level.ModData.game("levelmod", "worlds"), com.smeshariki.level.ModData.dir().resolve("worlds")).resolve(name).resolve("places.json");
-		// мир из архива (инструмент экспорта ManagementMod): локации лежат в самом мире, а у получателя файла по имени его папки ещё нет
+		// мир из архива (инструмент экспорта SmesharikiMod): локации лежат в самом мире, а у получателя файла по имени его папки ещё нет
 		java.nio.file.Path bundled = world.resolve("levelmod_places.json");
 		if (!java.nio.file.Files.exists(placesFile) && java.nio.file.Files.isRegularFile(bundled)) {
 			try {
