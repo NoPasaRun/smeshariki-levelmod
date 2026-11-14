@@ -503,7 +503,7 @@
       }
     },
     {
-      "when": "mission_resumed:cave",
+      "when": "checkpoint_resumed:cave:1",
       "delay": 200,
       "unless": "mission_reset:cave",
       "repeat": true,

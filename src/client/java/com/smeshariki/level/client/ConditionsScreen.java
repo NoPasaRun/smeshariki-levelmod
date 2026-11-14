@@ -9,7 +9,6 @@ import com.smeshariki.ui.SelectScreen;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -47,13 +46,9 @@ final class ConditionsScreen extends ListScreen {
 			addRenderableWidget(Button.builder(ConditionDraft.name(c.check), b -> SelectScreen.open(this, Component.translatable("gui.levelmod.select.check"),
 					new ArrayList<>(Mechanics.conditions().keySet()), id -> ConditionDraft.name(id).copy().append(Component.literal("  " + id).withStyle(net.minecraft.ChatFormatting.GRAY)), c.check, id -> c.check = id)).bounds(x, y, CHECK_W, H).tooltip(Tooltip.create(Component.literal(c.check == null ? "" : c.check.toString()))).build());
 			String hint = registered == null ? "" : registered.hint();
-			EditBox box = new EditBox(font, x + CHECK_W + 2, y, w - CHECK_W - DELETE_W - 4, H, Component.literal(hint));
-			box.setMaxLength(256);
-			box.setHint(Component.literal(hint));
-			box.setValue(c.args);
-			box.setResponder(v -> c.args = v);
-			if (!hint.isEmpty()) box.setTooltip(Tooltip.create(Component.literal(hint)));
-			addRenderableWidget(box);
+			Component owner = ConditionDraft.name(c.check);
+			addRenderableWidget(Button.builder(ArgsScreen.label(c.args), b -> minecraft.gui.setScreen(new ArgsScreen(this, owner, c.args, v -> c.args = v)))
+					.bounds(x + CHECK_W + 2, y, w - CHECK_W - DELETE_W - 4, H).tooltip(Tooltip.create(Component.literal(hint.isEmpty() ? c.args : hint))).build());
 			addDelete(x + w - DELETE_W, y, () -> {
 				conditions.remove(c);
 				rebuildWidgets();

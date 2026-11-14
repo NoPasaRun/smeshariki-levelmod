@@ -142,16 +142,17 @@ public final class LevelRun {
 				return out;
 			}),
 			Codec.unboundedMap(Codec.STRING, CompoundTag.CODEC).optionalFieldOf("snapshots", Map.of()).forGetter(r -> r.snapshots),
-			Extras.CODEC.forGetter(r -> new Extras(List.copyOf(r.companions), r.keptGear, r.forced)),
+			Extras.CODEC.forGetter(r -> new Extras(List.copyOf(r.companions), r.keptGear, r.forced, r.touchedForSave())),
 			Codec.STRING.listOf().optionalFieldOf("armed_watches", List.of()).forGetter(r -> List.copyOf(r.armedWatches))
 	).apply(i, LevelRun::new));
 
 	/** Поля сверх шестнадцати, которые умеет {@code RecordCodecBuilder}: лежат в файле на верхнем уровне, как остальные. */
-	private record Extras(List<Identifier> companions, Map<UUID, List<ItemStack>> keptGear, boolean forced) {
+	private record Extras(List<Identifier> companions, Map<UUID, List<ItemStack>> keptGear, boolean forced, Map<UUID, List<Integer>> touched) {
 		static final com.mojang.serialization.MapCodec<Extras> CODEC = RecordCodecBuilder.mapCodec(i -> i.group(
 				Identifier.CODEC.listOf().optionalFieldOf("companion_characters", List.of()).forGetter(Extras::companions),
 				Codec.unboundedMap(UUIDUtil.STRING_CODEC, ItemStack.CODEC.listOf()).optionalFieldOf("kept_gear", Map.of()).forGetter(Extras::keptGear),
-				Codec.BOOL.optionalFieldOf("forced", false).forGetter(Extras::forced)
+				Codec.BOOL.optionalFieldOf("forced", false).forGetter(Extras::forced),
+				Codec.unboundedMap(UUIDUtil.STRING_CODEC, Codec.INT.listOf()).optionalFieldOf("touched_checkpoints", Map.of()).forGetter(Extras::touched)
 		).apply(i, Extras::new));
 	}
 
@@ -204,6 +205,14 @@ public final class LevelRun {
 	private boolean waitAtStart;
 	/** Уровень пропускали или завершали принудительно (команда оператора): время такого прогона в статистику не идёт. Сохраняется с прогоном. */
 	private boolean forced;
+	/** Чекпоинты миссии (номера в её списке), в которых игрок побывал: общий чекпоинт засчитывается, когда в нём побывали все. Сбрасывается в начале миссии. */
+	private final Map<UUID, java.util.Set<Integer>> touched;
+
+	private Map<UUID, List<Integer>> touchedForSave() {
+		Map<UUID, List<Integer>> out = new HashMap<>();
+		touched.forEach((id, set) -> out.put(id, List.copyOf(set)));
+		return out;
+	}
 
 	private LevelRun(Identifier level, State state, List<Participant> participants, long elapsed, Map<String, Progress> tasks, List<LevelEvent> happened, List<Integer> fired, Map<Identifier, Integer> cutscenes, List<Delayed> delayed, Map<UUID, Integer> outside, Map<UUID, Integer> checkpoints, Map<UUID, Identifier> roles, Map<String, List<String>> toggles, Map<String, CompoundTag> snapshots, Extras extras, List<String> armedWatches) {
 		this.level = level;
@@ -223,6 +232,8 @@ public final class LevelRun {
 		this.snapshots = new HashMap<>(snapshots);
 		this.companions = new java.util.LinkedHashSet<>(extras.companions());
 		this.forced = extras.forced();
+		this.touched = new HashMap<>();
+		extras.touched().forEach((id, list) -> this.touched.put(id, new HashSet<>(list)));
 		this.keptGear = new HashMap<>();
 		extras.keptGear().forEach((id, list) -> this.keptGear.put(id, new ArrayList<>(list)));
 		this.armedWatches = new HashSet<>(armedWatches);
@@ -232,7 +243,7 @@ public final class LevelRun {
 	public static LevelRun gather(Identifier level, LevelDefinition definition, RunHost host) {
 		Map<String, Progress> tasks = new HashMap<>();
 		for (TaskEntry entry : definition.tasks()) tasks.put(entry.id(), new Progress());
-		LevelRun run = new LevelRun(level, State.GATHERING, List.of(), 0, tasks, List.of(), List.of(), Map.of(), List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), new Extras(List.of(), Map.of(), false), List.of());
+		LevelRun run = new LevelRun(level, State.GATHERING, List.of(), 0, tasks, List.of(), List.of(), Map.of(), List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), new Extras(List.of(), Map.of(), false, Map.of()), List.of());
 		run.attach(definition, host);
 		return run;
 	}
@@ -402,6 +413,7 @@ public final class LevelRun {
 	 */
 	private void gatherAtStart(MissionEntry mission) {
 		checkpoints.clear();
+		touched.clear();
 		snapshots.keySet().removeIf(k -> k.startsWith(mission.id() + "#"));
 		changed = true;
 		for (UUID id : online()) {
@@ -434,26 +446,46 @@ public final class LevelRun {
 		return placeOf(player, own.get(Math.min(checkpoints.getOrDefault(player, 0), own.size() - 1)));
 	}
 
-	/** Игрок входит в чекпоинты миссии: достигнутый дальше прежнего запоминается (приоритет — порядок в списке), нижние уже не вернут. */
+	/**
+	 * Игрок входит в чекпоинты миссии: достигнутый дальше прежнего запоминается (приоритет — порядок в списке), нижние уже не вернут. Чекпоинт «для всех»
+	 * (без {@code character}) засчитывается всем разом, когда в нём побывал каждый игрок в сети: пока не дошли все, он никого не двигает; свой чекпоинт персонажа —
+	 * как только в нём побывал сам игрок.
+	 */
 	private void checkCheckpoints() {
 		MissionEntry mission = currentMission();
 		if (mission == null) return;
-		for (UUID id : online()) {
+		List<UUID> here = online();
+		for (UUID id : here) {
+			List<Checkpoint> own = mission.checkpointsFor(roles.get(id));
+			for (int i = 1; i < own.size(); i++) {
+				if (atCheckpoint(id, own.get(i)) && touched.computeIfAbsent(id, k -> new HashSet<>()).add(mission.checkpoints().indexOf(own.get(i)))) changed = true;
+			}
+		}
+		java.util.Set<Integer> announced = new HashSet<>();
+		for (UUID id : here) {
 			List<Checkpoint> own = mission.checkpointsFor(roles.get(id));
 			int reached = checkpoints.getOrDefault(id, 0);
 			for (int i = own.size() - 1; i > reached; i--) {
-				if (!atCheckpoint(id, own.get(i))) continue;
+				Checkpoint reachedCheckpoint = own.get(i);
+				int global = mission.checkpoints().indexOf(reachedCheckpoint);
+				boolean passed = reachedCheckpoint.character().isPresent() ? touchedBy(id, global) : here.stream().allMatch(other -> touchedBy(other, global));
+				if (!passed) continue;
 				checkpoints.put(id, i);
 				changed = true;
-				Checkpoint reachedCheckpoint = own.get(i);
 				takeCheckpointSnapshot(mission, id, reachedCheckpoint);
 				host.tell(id, Component.translatable("message.levelmod.checkpoint"), true);
-				int number = mission.checkpoints().indexOf(reachedCheckpoint) + 1;
-				fire(LevelEvent.checkpointReached(mission.id(), number));
-				reachedCheckpoint.onEnter().ifPresent(this::perform);
+				// общий чекпоинт засчитан всем сразу, но случился один раз
+				if (announced.add(global)) {
+					fire(LevelEvent.checkpointReached(mission.id(), global + 1));
+					reachedCheckpoint.onEnter().ifPresent(this::perform);
+				}
 				break;
 			}
 		}
+	}
+
+	private boolean touchedBy(UUID player, int checkpoint) {
+		return touched.getOrDefault(player, java.util.Set.of()).contains(checkpoint);
 	}
 
 	/** Где встать в области: на полу у её центра на высоте, где её рисовали (так работает и под землёй); без нарисованных точек — на поверхности. */
@@ -596,13 +628,30 @@ public final class LevelRun {
 
 	/** Снимок подвижного в области миссии; не загружены чанки — останется без снимка, {@code tick} попробует снова. */
 	private void takeSnapshot(MissionEntry mission) {
-		if (mission.area().isEmpty()) return;
-		CompoundTag tag = host.saveSnapshot(mission.area().get());
-		if (tag == null) return;
-		List<ResetCell> cells = startCells(mission);
-		if (!cells.isEmpty()) tag.put(CELLS, host.saveCells(mission.area().get(), cells));
-		snapshots.put(mission.id(), tag);
+		if (mission.areas().isEmpty()) return;
+		CompoundTag tag = snapshotAreas(mission, startCells(mission));
+		if (tag != null) snapshots.put(mission.id(), tag);
 	}
+
+	/**
+	 * Снимок всех областей миссии: у первой — плоский, как всегда, у остальных — вложенный {@code area<N>} в нём же (снимки прежних миссий читаются как есть).
+	 * Ячейки отката берутся в каждой области. Чанки одной из областей не загружены — {@code null}.
+	 */
+	private @Nullable CompoundTag snapshotAreas(MissionEntry mission, List<ResetCell> cells) {
+		CompoundTag result = null;
+		for (int i = 0; i < mission.areas().size(); i++) {
+			TaskArea area = mission.areas().get(i);
+			CompoundTag part = host.saveSnapshot(area);
+			if (part == null) return null;
+			if (!cells.isEmpty()) part.put(CELLS, host.saveCells(area, cells));
+			if (i == 0) result = part;
+			else result.put(AREA_PART + i, part);
+		}
+		return result;
+	}
+
+	/** Ключ снимка второй и следующих областей миссии. */
+	private static final String AREA_PART = "area";
 
 	/** Ключ ячеек отката в снимке. */
 	private static final String CELLS = "cells";
@@ -625,10 +674,9 @@ public final class LevelRun {
 	 * вернёт снимок начала миссии.
 	 */
 	private void takeCheckpointSnapshot(MissionEntry mission, UUID player, com.smeshariki.level.task.Checkpoint checkpoint) {
-		if (mission.area().isEmpty()) return;
-		CompoundTag tag = host.saveSnapshot(mission.area().get());
+		if (mission.areas().isEmpty()) return;
+		CompoundTag tag = snapshotAreas(mission, checkpoint.resets());
 		if (tag == null) return;
-		if (!checkpoint.resets().isEmpty()) tag.put(CELLS, host.saveCells(mission.area().get(), checkpoint.resets()));
 		String prefix = mission.id() + "#", suffix = "@" + player;
 		snapshots.keySet().removeIf(k -> k.startsWith(prefix) && k.endsWith(suffix));
 		snapshots.put(prefix + mission.checkpoints().indexOf(checkpoint) + suffix, tag);
@@ -658,15 +706,18 @@ public final class LevelRun {
 	/** Когда (тик прогона) постройки миссии последний раз возвращались: сброс задач обоих игроков за один тик возвращает их и сообщает об этом один раз. */
 	private final Map<String, Long> restoredAt = new HashMap<>();
 
-	/** Область миссии — как в её начале: подвижное из снимка, блоки к версии мира. */
+	/** Области миссии — как в её начале (или на чекпоинте): подвижное из снимка, блоки к версии мира. */
 	private void restore(MissionEntry mission, java.util.Collection<UUID> players) {
-		if (mission.area().isEmpty() || Long.valueOf(elapsed).equals(restoredAt.put(mission.id(), elapsed))) return;
-		TaskArea area = mission.area().get();
+		if (mission.areas().isEmpty() || Long.valueOf(elapsed).equals(restoredAt.put(mission.id(), elapsed))) return;
 		CompoundTag snapshot = snapshotFor(mission, players);
-		if (snapshot != null) host.restoreSnapshot(area.dimension(), snapshot);
-		host.resetBlocks(area);
-		// ячейки — после блоков по версии мира (их возврат ждёт конца версии)
-		if (snapshot != null) snapshot.getCompound(CELLS).ifPresent(cells -> host.restoreCells(area, cells));
+		for (int i = 0; i < mission.areas().size(); i++) {
+			TaskArea area = mission.areas().get(i);
+			CompoundTag part = snapshot == null ? null : i == 0 ? snapshot : snapshot.getCompound(AREA_PART + i).orElse(null);
+			if (part != null) host.restoreSnapshot(area.dimension(), part);
+			host.resetBlocks(area);
+			// ячейки — после блоков по версии мира (их возврат ждёт конца версии)
+			if (part != null) part.getCompound(CELLS).ifPresent(cells -> host.restoreCells(area, cells));
+		}
 		if (state == State.RUNNING) fire(LevelEvent.missionReset(mission.id()));
 	}
 
@@ -809,19 +860,38 @@ public final class LevelRun {
 		if (point == null) return;
 		host.returnTo(this, player, point);
 		MissionEntry mission = currentMission();
-		if (mission != null) {
-			List<Checkpoint> own = mission.checkpointsFor(roles.get(player));
-			int number = mission.checkpoints().indexOf(own.get(Math.min(checkpoints.getOrDefault(player, 0), own.size() - 1))) + 1;
-			// возврат нескольких игроков на один чекпоинт за тик — одно событие
-			if (!Long.valueOf(elapsed).equals(checkpointResetAt.put(mission.id() + ":" + number, elapsed))) fire(LevelEvent.checkpointReset(mission.id(), number));
-		}
-		if (mission != null && mission.resetWait() > 0) {
-			host.freeze(player, mission.resetWait() * 20);
+		if (mission == null) return;
+		List<Checkpoint> own = mission.checkpointsFor(roles.get(player));
+		Checkpoint checkpoint = own.get(Math.min(checkpoints.getOrDefault(player, 0), own.size() - 1));
+		int number = mission.checkpoints().indexOf(checkpoint) + 1;
+		// возврат нескольких игроков на один чекпоинт за тик — одно событие
+		if (!Long.valueOf(elapsed).equals(checkpointResetAt.put(mission.id() + ":" + number, elapsed))) fire(LevelEvent.checkpointReset(mission.id(), number));
+		resumeNumbers.add(number);
+		// у чекпоинта своё ожидание, нет его — ожидание миссии
+		int wait = checkpoint.resetWait().orElse(mission.resetWait());
+		if (wait > 0) {
+			host.freeze(player, wait * 20);
 			waiting.add(player);
-		} else if (mission != null && waiting.isEmpty() && !Long.valueOf(elapsed).equals(resumedAt.put(mission.id(), elapsed))) {
+		} else if (waiting.isEmpty()) {
 			// без ожидания: можно сразу продолжать
-			fire(LevelEvent.missionResumed(mission.id()));
+			resume(mission);
 		}
+	}
+
+	/** Номера чекпоинтов, на которые вернули игроков, пока шло ожидание: когда оно кончится, для каждого придёт своё событие. */
+	private final java.util.Set<Integer> resumeNumbers = new java.util.TreeSet<>();
+	/** Когда (тик прогона) событие возобновления чекпоинта последний раз приходило, по {@code миссия:номер}. */
+	private final Map<String, Long> checkpointResumedAt = new HashMap<>();
+
+	/** Ожидание кончилось (или его не было): миссия возобновлена и каждый чекпоинт, на который вернули игроков, тоже. */
+	private void resume(MissionEntry mission) {
+		// придержанное возвратом (волны лавы) идёт дальше до событий: триггеры на них видят уже живую волну
+		host.resumeSnapshots();
+		if (!Long.valueOf(elapsed).equals(resumedAt.put(mission.id(), elapsed))) fire(LevelEvent.missionResumed(mission.id()));
+		for (int number : List.copyOf(resumeNumbers)) {
+			if (!Long.valueOf(elapsed).equals(checkpointResumedAt.put(mission.id() + ":" + number, elapsed))) fire(LevelEvent.checkpointResumed(mission.id(), number));
+		}
+		resumeNumbers.clear();
 	}
 
 	/** Когда (тик прогона) событие отката на чекпоинт последний раз приходило. */
@@ -836,7 +906,7 @@ public final class LevelRun {
 	public void waitFinished(UUID player) {
 		if (!waiting.remove(player) || !waiting.isEmpty() || state != State.RUNNING) return;
 		MissionEntry mission = currentMission();
-		if (mission != null) fire(LevelEvent.missionResumed(mission.id()));
+		if (mission != null) resume(mission);
 	}
 
 	/** Клик по свободному персонажу: true, если этого разговора ждёт идущая задача, и тогда клик не должен делать ничего другого. */
@@ -892,12 +962,13 @@ public final class LevelRun {
 		for (MissionEntry mission : definition.missions()) {
 			if (happened.add(LevelEvent.missionStarted(mission.id()))) {
 				takeSnapshot(mission);
-				mission.area().ifPresent(host::prepareBlocks);
+				mission.areas().forEach(host::prepareBlocks);
 				gatherAtStart(mission);
 				// напарник, оставленный ждать или со стропой в руках в прошлой миссии, снова идёт за игроком
 				if (!companions.isEmpty() && !online().isEmpty()) for (Identifier id : companions) host.orderCompanion(id, online().getFirst(), FOLLOW, new MechanicParams(new com.google.gson.JsonObject()));
 				fire(LevelEvent.missionStarted(mission.id()));
 				if (waitAtStart && mission.resetWait() > 0 && !online().isEmpty()) {
+					resumeNumbers.add(1);
 					// как после сброса: отсчёт, потом возобновление; начало миссии для правил — уже «сброс», поэтому ожидающее «через N с после начала» отменяется
 					for (UUID id : online()) {
 						host.startWait(id, mission.resetWait() * 20);

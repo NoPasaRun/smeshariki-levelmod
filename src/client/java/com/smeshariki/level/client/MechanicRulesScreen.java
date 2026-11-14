@@ -105,13 +105,17 @@ final class MechanicRulesScreen extends ListScreen {
 			if (rule.when.kind() == LevelEvent.Kind.EXTERNAL) {
 				String name = externalName(rule.when), subject = rule.when.subject().length() > name.length() ? rule.when.subject().substring(name.length() + 1) : "";
 				String hint = Mechanics.eventNames().getOrDefault(name, "");
-				EditBox box = new EditBox(font, x + whenW + 2, y, subjectW, H, Component.literal(hint));
-				box.setMaxLength(64);
-				box.setHint(Component.literal(hint));
-				box.setValue(subject);
-				box.setResponder(v -> rule.when = LevelEvent.external(v.isBlank() ? name : name + ":" + v.trim()));
-				if (!hint.isEmpty()) box.setTooltip(Tooltip.create(Component.literal(hint)));
-				addRenderableWidget(box);
+				// уточнение (группа) выбирается из реестра групп; чужое имя, которого там нет, остаётся в списке
+				List<String> groups = new ArrayList<>();
+				for (var group : ClientLevels.groups) groups.add(group.name());
+				if (!subject.isEmpty() && !groups.contains(subject)) groups.add(0, subject);
+				addRenderableWidget(Button.builder(subject.isEmpty() ? Component.literal(hint.isEmpty() ? "—" : hint) : Component.literal(subject), btn -> {
+					List<String> options = new ArrayList<>();
+					options.add("");
+					options.addAll(groups);
+					SelectScreen.open(this, Component.translatable("gui.levelmod.select.group"), options, v -> v.isEmpty() ? Component.translatable("gui.levelmod.rules.any_group") : Component.literal(v), subject,
+							v -> rule.when = LevelEvent.external(v.isEmpty() ? name : name + ":" + v));
+				}).bounds(x + whenW + 2, y, subjectW, H).tooltip(Tooltip.create(Component.literal(hint))).build());
 			}
 			int ax = x + whenW + subjectW + 4;
 			addRenderableWidget(Button.builder(rule.action == null ? Component.translatable("gui.levelmod.rules.no_action") : mechanicName(rule.action),
@@ -121,7 +125,9 @@ final class MechanicRulesScreen extends ListScreen {
 						// у показа кат-сцены один параметр: подставляем первую, остальное выбирают в поле
 						if (id.equals(LevelDraft.MechanicRule.PLAY_CUTSCENE) && !rule.args.contains("cutscene=") && !ClientLevels.cutscenes.isEmpty()) rule.args = "cutscene=" + ClientLevels.cutscenes.getFirst();
 					})).bounds(ax, y, actionW, H).tooltip(Tooltip.create(rule.action == null ? Component.empty() : Component.literal(rule.action.toString()))).build());
-			addRenderableWidget(LevelEditorScreen.field(this, font, ax + actionW + 2, y, argsW, "gui.levelmod.rules.args", rule.args, 256, v -> rule.args = v));
+			// параметры действия — список «ключ → значение»: группы, локации, кат-сцены и предметы выбираются, а не набираются
+			addRenderableWidget(Button.builder(ArgsScreen.label(rule.args), btn -> minecraft.gui.setScreen(new ArgsScreen(this, rule.action == null ? Component.empty() : mechanicName(rule.action), rule.args, v -> rule.args = v)))
+					.bounds(ax + actionW + 2, y, argsW, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.rules.args"))).build());
 			addRenderableWidget(LevelEditorScreen.field(this, font, ax + actionW + argsW + 4, y, delayW, "gui.levelmod.rules.delay", rule.delay, 8, v -> rule.delay = v));
 			int ux = ax + actionW + argsW + delayW + 6;
 			// «отменить, если случится»: отложенное действие не выполнится, когда до срока произойдёт это событие (например, сброс миссии)
@@ -197,6 +203,7 @@ final class MechanicRulesScreen extends ListScreen {
 			for (int i = 1; i <= scope.checkpoints.size(); i++) {
 				if (i > 1) options.add(LevelEvent.checkpointReached(scope.id, i));
 				options.add(LevelEvent.checkpointReset(scope.id, i));
+				options.add(LevelEvent.checkpointResumed(scope.id, i));
 			}
 			options.add(LevelEvent.missionCompleted(scope.id));
 			options.add(LevelEvent.missionReset(scope.id));
@@ -240,9 +247,13 @@ final class MechanicRulesScreen extends ListScreen {
 				LevelDraft.MissionDraft mission = draft.missions.stream().filter(m -> m.id.equals(subject)).findFirst().orElse(null);
 				yield Component.translatable("gui.levelmod.start.mission_resumed", mission == null || mission.title.isBlank() ? subject : mission.title);
 			}
-			case CHECKPOINT_REACHED, CHECKPOINT_RESET -> {
+			case CHECKPOINT_REACHED, CHECKPOINT_RESET, CHECKPOINT_RESUMED -> {
 				String number = subject.substring(subject.lastIndexOf(':') + 1);
-				yield Component.translatable(event.kind() == LevelEvent.Kind.CHECKPOINT_REACHED ? "gui.levelmod.start.checkpoint_reached" : "gui.levelmod.start.checkpoint_reset", number);
+				yield Component.translatable(switch (event.kind()) {
+					case CHECKPOINT_REACHED -> "gui.levelmod.start.checkpoint_reached";
+					case CHECKPOINT_RESET -> "gui.levelmod.start.checkpoint_reset";
+					default -> "gui.levelmod.start.checkpoint_resumed";
+				}, number);
 			}
 			case TASK_FAILED -> Component.translatable("gui.levelmod.start.task_failed", taskName);
 			case LEVEL_COMPLETED -> Component.translatable("gui.levelmod.start.level_completed");

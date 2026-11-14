@@ -132,10 +132,8 @@ final class TaskEditorScreen extends UiScreen {
 					.bounds(x + half + 2, y, half, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.rules.mission_tip"))).build());
 			y += ROW;
 			// всё в области миссии возвращается при сбросе: подвижное к её началу, блоки к версии мира
-			addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.mission.area", selected.area.isEmpty() ? Component.translatable("gui.levelmod.editor.none") : Component.literal(selected.area)), b -> minecraft.gui.setScreen(new LocationPickerScreen(this, true, name -> {
-				selected.area = name;
-				selected.areaRaw = null;
-			}))).bounds(x, y, w, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.mission.area.hint"))).build());
+			addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.mission.area", selected.areas.isEmpty() && selected.areaRaw == null ? Component.translatable("gui.levelmod.editor.none") : Component.literal(selected.areas.isEmpty() ? "…" : String.join(", ", selected.areas))), b -> minecraft.gui.setScreen(new MissionAreasScreen(this, selected)))
+					.bounds(x, y, w, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.mission.area.hint"))).build());
 			y += ROW;
 			// ожидание после сброса: игрок стоит, камеру крутит, на экране отсчёт; стрелы и волны лавы начинаются после него
 			add(x, y, half, "gui.levelmod.mission.reset_wait", selected.resetWait == 0 ? "" : Integer.toString(selected.resetWait), 2, v -> {
@@ -172,7 +170,7 @@ final class TaskEditorScreen extends UiScreen {
 			}
 			case "reach_area" -> pick(x, y, w, "gui.levelmod.task.destination", task.target, true, name -> task.target = name);
 			case "get_item" -> {
-				add(x, y, w - 62, "gui.levelmod.task.item", task.item, 80, v -> task.item = v);
+				registry(x, y, w - 62, "gui.levelmod.task.item", task.item, false, v -> task.item = v);
 				add(x + w - 60, y, 60, "gui.levelmod.task.count", task.count, 8, v -> task.count = v);
 			}
 			case "talk" -> {
@@ -192,7 +190,7 @@ final class TaskEditorScreen extends UiScreen {
 				}).bounds(x + half + 2, y, half, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.task.together.hint"))).build());
 			}
 			default -> {
-				add(x, y, w - 62, "gui.levelmod.task.block", task.block, 80, v -> task.block = v);
+				registry(x, y, w - 62, "gui.levelmod.task.block", task.block, true, v -> task.block = v);
 				add(x + w - 60, y, 60, "gui.levelmod.task.count", task.count, 8, v -> task.count = v);
 			}
 		}
@@ -249,6 +247,15 @@ final class TaskEditorScreen extends UiScreen {
 	private void add(int x, int y, int w, String hint, String value, int max, java.util.function.Consumer<String> target) {
 		EditBox box = LevelEditorScreen.field(this, font, x, y, w, hint, value, max, target);
 		addRenderableWidget(box);
+	}
+
+	/** Предмет или блок из реестра выбором из списка (с поиском); значение вне реестра (например, {@code #тег}) остаётся в списке как текущее. */
+	private void registry(int x, int y, int w, String hintKey, String current, boolean blocks, java.util.function.Consumer<String> target) {
+		Component label = current.isBlank() ? Component.translatable(hintKey) : ArgsScreen.registryName(current, blocks);
+		select(x, y, w, label, () -> {
+			List<String> all = ArgsScreen.registryOptions(blocks, current);
+			SelectScreen.open(this, Component.translatable(blocks ? "gui.levelmod.args.pick.block" : "gui.levelmod.args.pick.item"), all, v -> ArgsScreen.registryName(v, blocks), current.isBlank() ? null : current, target);
+		});
 	}
 
 	/** Кнопка, открывающая выбор из списка ({@link SelectScreen}). */

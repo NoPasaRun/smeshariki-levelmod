@@ -188,6 +188,7 @@ public final class LevelManager {
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
 			AreaReset.clear();
 			ResetCells.clear();
+			resumeServer = null;
 			AreaCleanup.clear();
 			WorldReset.clear();
 			for (UUID id : List.copyOf(SPECTATORS.keySet())) stopSpectating(server, id, false);
@@ -771,7 +772,7 @@ public final class LevelManager {
 		// их событий в проверке нет; порядок задач миссии, заданный уровнем, сохраняется
 		List<Trigger> levelTriggers = source == null ? List.of() : source.definition().triggers().stream().filter(t -> source.definition().triggerOwner(t).isEmpty()).toList();
 		List<com.smeshariki.level.definition.Watch> levelWatches = source == null ? List.of() : source.definition().watches();
-		LevelDefinition definition = new LevelDefinition(LevelKind.STORY, mission.title(), Component.empty(), LevelPreview.NONE, 1, 1, 0, Optional.empty(), List.of(new MissionEntry(mission.id(), mission.title(), mission.description(), alone, mission.area(), mission.checkpoints(), mission.orders(), mission.gear(), mission.resetWait(), mission.guide(), mission.triggers())), levelTriggers, levelCharacters, Map.of(), levelWatches).expanded();
+		LevelDefinition definition = new LevelDefinition(LevelKind.STORY, mission.title(), Component.empty(), LevelPreview.NONE, 1, 1, 0, Optional.empty(), List.of(new MissionEntry(mission.id(), mission.title(), mission.description(), alone, mission.areas(), mission.checkpoints(), mission.orders(), mission.gear(), mission.resetWait(), mission.guide(), mission.triggers())), levelTriggers, levelCharacters, Map.of(), levelWatches).expanded();
 		LevelRun run = LevelRun.gather(TEST_LEVEL, definition, new Host(server, true));
 		// проверка начинается с экрана ожидания, как после сброса (в полном прохождении уровень стартует без него)
 		run.waitAtStart();
@@ -843,6 +844,16 @@ public final class LevelManager {
 	private static final Map<UUID, Integer> FROZEN = new HashMap<>();
 
 	/** Ждёт ли игрок после сброса: ещё не вернулся или стоит на отсчёте. */
+	/** Сервер, где ожидание после сброса кончилось, а механики ещё не продолжили придержанное возвратом (волны лавы). */
+	private static MinecraftServer resumeServer;
+
+	/** Придержанное возвратом снимка продолжается, когда блоки области и ячейки чекпоинта вернулись: иначе волна пошла бы по лаве, которой ещё нет. */
+	private static void tickResume(MinecraftServer server) {
+		if (resumeServer != server || !AreaReset.idle() || !ResetCells.idle()) return;
+		resumeServer = null;
+		Mechanics.snapshots().values().forEach(snapshot -> snapshot.resume(server));
+	}
+
 	private static boolean waiting(UUID player) {
 		return WAITS.containsKey(player) || FROZEN.containsKey(player) || HOLDS.contains(player);
 	}
@@ -957,6 +968,7 @@ public final class LevelManager {
 		AreaReset.tick(server);
 		ResetCells.tick(server);
 		AreaCleanup.tick(server);
+		tickResume(server);
 		WorldReset.tick(server);
 		syncGuides(server);
 		if (syncNeeded && server.getTickCount() % SYNC_INTERVAL == 0) {
@@ -988,13 +1000,14 @@ public final class LevelManager {
 			}
 			// область миссии: лава, шары и обстрелы работают и там, где никого нет
 			MissionEntry mission = run.currentMission();
-			if (mission == null || mission.area().isEmpty()) continue;
-			TaskArea area = mission.area().get();
-			double[] b = area.boundsXZ();
-			int x0 = (int) Math.floor(b[0]) >> 4, z0 = (int) Math.floor(b[1]) >> 4, x1 = (int) Math.floor(b[2]) >> 4, z1 = (int) Math.floor(b[3]) >> 4;
-			if ((long) (x1 - x0 + 1) * (z1 - z0 + 1) > TOUCH_AREA_CAP) continue;
-			String dimension = area.dimension().identifier().toString();
-			for (int x = x0; x <= x1; x++) for (int z = z0; z <= z1; z++) store.touch(dimension, net.minecraft.world.level.ChunkPos.pack(x, z));
+			if (mission == null) continue;
+			for (TaskArea area : mission.areas()) {
+				double[] b = area.boundsXZ();
+				int x0 = (int) Math.floor(b[0]) >> 4, z0 = (int) Math.floor(b[1]) >> 4, x1 = (int) Math.floor(b[2]) >> 4, z1 = (int) Math.floor(b[3]) >> 4;
+				if ((long) (x1 - x0 + 1) * (z1 - z0 + 1) > TOUCH_AREA_CAP) continue;
+				String dimension = area.dimension().identifier().toString();
+				for (int x = x0; x <= x1; x++) for (int z = z0; z <= z1; z++) store.touch(dimension, net.minecraft.world.level.ChunkPos.pack(x, z));
+			}
 		}
 	}
 
@@ -1297,6 +1310,12 @@ public final class LevelManager {
 		public void restoreCells(TaskArea area, CompoundTag cells) {
 			ServerLevel level = server.getLevel(area.dimension());
 			if (level != null) ResetCells.restore(level, area, cells);
+		}
+
+		@Override
+		public void resumeSnapshots() {
+			// не сразу: пока блоки области и ячейки чекпоинта не вернулись (лава на месте), волна идти не должна — см. tickResume
+			resumeServer = server;
 		}
 
 		@Override

@@ -160,7 +160,7 @@ public final class LevelAnalyzer {
 		for (Trigger trigger : level.triggers())
 			for (LevelEvent event : trigger.when())
 				// выход, выход за границу, гибель и события механик (шар сел) не часть обычного прохождения: их триггеры живые, хотя времени у событий нет
-				if (event.kind() != LevelEvent.Kind.LEVEL_ABANDONED && event.kind() != LevelEvent.Kind.TASK_FAILED && event.kind() != LevelEvent.Kind.TASK_RESET && event.kind() != LevelEvent.Kind.MISSION_RESET && event.kind() != LevelEvent.Kind.MISSION_RESUMED && event.kind() != LevelEvent.Kind.CHECKPOINT_REACHED && event.kind() != LevelEvent.Kind.CHECKPOINT_RESET && event.kind() != LevelEvent.Kind.EXTERNAL && !(event.kind() == LevelEvent.Kind.CUSTOM && watchIds.contains(event.subject())) && !times.containsKey(event)) problems.add("событие " + event + " никогда не случится, триггер не сработает");
+				if (event.kind() != LevelEvent.Kind.LEVEL_ABANDONED && event.kind() != LevelEvent.Kind.TASK_FAILED && event.kind() != LevelEvent.Kind.TASK_RESET && event.kind() != LevelEvent.Kind.MISSION_RESET && event.kind() != LevelEvent.Kind.MISSION_RESUMED && event.kind() != LevelEvent.Kind.CHECKPOINT_REACHED && event.kind() != LevelEvent.Kind.CHECKPOINT_RESET && event.kind() != LevelEvent.Kind.CHECKPOINT_RESUMED && event.kind() != LevelEvent.Kind.EXTERNAL && !(event.kind() == LevelEvent.Kind.CUSTOM && watchIds.contains(event.subject())) && !times.containsKey(event)) problems.add("событие " + event + " никогда не случится, триггер не сработает");
 		return new Result(times.getOrDefault(LevelEvent.LEVEL_COMPLETED, 0L), problems);
 	}
 
@@ -219,7 +219,7 @@ public final class LevelAnalyzer {
 					case TASK_STARTED, TASK_COMPLETED, TASK_FAILED, TASK_RESET -> {
 						if (!own.contains(event.subject())) problems.add(where + "событие чужой задачи " + event);
 					}
-					case CHECKPOINT_REACHED, CHECKPOINT_RESET -> {
+					case CHECKPOINT_REACHED, CHECKPOINT_RESET, CHECKPOINT_RESUMED -> {
 						String number = event.subject().substring(event.subject().lastIndexOf(':') + 1);
 						int n = number.matches("\\d{1,4}") ? Integer.parseInt(number) : 0;
 						if (!event.checkpointMission().equals(mission.id())) problems.add(where + "чекпоинт другой миссии " + event);

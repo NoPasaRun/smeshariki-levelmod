@@ -26,7 +26,7 @@ import com.google.gson.JsonObject;
  */
 public final class LegacyTriggers {
 	private static final Set<String> KINDS = Set.of("level_started", "level_completed", "level_abandoned", "mission_started", "mission_completed", "mission_reset", "mission_resumed",
-			"task_started", "task_completed", "task_failed", "task_reset", "cutscene_started", "cutscene_finished", "custom", "checkpoint_reached", "checkpoint_reset");
+			"task_started", "task_completed", "task_failed", "task_reset", "cutscene_started", "cutscene_finished", "custom", "checkpoint_reached", "checkpoint_reset", "checkpoint_resumed");
 
 	private LegacyTriggers() {
 	}
@@ -109,6 +109,10 @@ public final class LegacyTriggers {
 			found.add(m);
 			if (fromActions == null) fromActions = m;
 		}
+		// показ кат-сцены — действие уровня (окно «События уровня»): «начало миссии → кат-сцена» остаётся в уровне, иначе после перезагрузки его в окне уровня не видно,
+		// а каждое сохранение дописывает копию. В миссии остаётся только кат-сцена после задачи (task_*), её ведёт сама задача
+		boolean cutscene = actions(trigger.get("then")).stream().anyMatch(a -> a.has("action") && a.get("action").getAsString().equals("play_cutscene"));
+		if (cutscene && when.stream().noneMatch(e -> e.startsWith("task_"))) return null;
 		if (found.size() > 1) return null;
 		if (!found.isEmpty()) return found.iterator().next();
 		if (groups == null) return null;

@@ -95,6 +95,10 @@ public interface RunHost {
 	/** Вернуть ячейки к запомненному (после того, как область вернулась к версии мира). */
 	void restoreCells(TaskArea area, CompoundTag cells);
 
+	/** Ожидание после возврата кончилось: механики продолжают то, что возврат придержал (волны лавы). */
+	default void resumeSnapshots() {
+	}
+
 	/** Вернуть постройки к снимку. */
 	void restoreSnapshot(ResourceKey<Level> dimension, CompoundTag snapshot);
 

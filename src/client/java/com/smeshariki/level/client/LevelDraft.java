@@ -59,6 +59,8 @@ final class LevelDraft {
 		/** Только для этого персонажа; {@code null} — для всех. */
 		Identifier character;
 		final JsonObject extras = new JsonObject();
+		/** Сколько секунд игрок стоит после отката на этот чекпоинт; {@code null} — как у миссии. */
+		Integer resetWait;
 		/** Ячейки отката (до {@link com.smeshariki.level.task.ResetCell#MAX}): что ещё запоминать в области при входе и возвращать при откате. */
 		final List<com.smeshariki.level.task.ResetCell> resets = new ArrayList<>();
 		/** Действие механики при входе в чекпоинт: идентификатор и параметры строкой (как у правила); {@code null} — нет. */
@@ -80,6 +82,7 @@ final class LevelDraft {
 						com.smeshariki.level.task.ResetCell.CODEC.parse(com.mojang.serialization.JsonOps.INSTANCE, cell).result().ifPresent(draft.resets::add);
 					}
 				}
+				if (object.has("reset_wait") && object.get("reset_wait").isJsonPrimitive()) draft.resetWait = Math.clamp(object.get("reset_wait").getAsInt(), 0, 60);
 				if (object.has("on_enter") && object.get("on_enter").isJsonObject()) draft.readEnter(object.getAsJsonObject("on_enter"));
 			}
 			if (place.isJsonPrimitive() && place.getAsString().startsWith("@")) draft.location = place.getAsString().substring(1);
@@ -116,11 +119,12 @@ final class LevelDraft {
 			JsonElement place = location.isEmpty() ? rawPlace : new com.google.gson.JsonPrimitive("@" + location);
 			if (place == null) return null;
 			JsonObject enter = enterJson();
-			if (character == null && extras.size() == 0 && resets.isEmpty() && enter == null) return place;
+			if (character == null && extras.size() == 0 && resets.isEmpty() && enter == null && resetWait == null) return place;
 			JsonObject object = new JsonObject();
 			object.add("at", place);
 			if (character != null) object.addProperty("character", character.toString());
 			extras.entrySet().forEach(e -> object.add(e.getKey(), e.getValue()));
+			if (resetWait != null) object.addProperty("reset_wait", resetWait);
 			if (!resets.isEmpty()) {
 				JsonArray cells = new JsonArray();
 				for (var cell : resets) cells.add(com.smeshariki.level.task.ResetCell.CODEC.encodeStart(com.mojang.serialization.JsonOps.INSTANCE, cell).getOrThrow());
@@ -141,8 +145,8 @@ final class LevelDraft {
 		int resetWait;
 		/** Куда бежать (подсказка светом): локация по имени, пусто — нет. */
 		String guide = "";
-		/** Область миссии (локация): в ней всё возвращается при сбросе. */
-		String area = "";
+		/** Области миссии (локации по именам): в них всё возвращается при сбросе. */
+		final List<String> areas = new ArrayList<>();
 		final String id;
 		String title = "";
 		/** Описание миссии: показывается по кнопке «Подробнее» рядом со списком задач. */
@@ -194,6 +198,18 @@ final class LevelDraft {
 		return value.startsWith("@") ? value.substring(1) : "";
 	}
 
+	/** Имена локаций из ссылки {@code "@имя"} или списка таких ссылок; всё другое (контур прямо в файле) — пусто: оно останется как есть. */
+	static List<String> locations(JsonElement json) {
+		List<String> names = new ArrayList<>();
+		if (json == null) return names;
+		List<JsonElement> items = json.isJsonArray() ? json.getAsJsonArray().asList() : List.of(json);
+		for (JsonElement item : items) {
+			if (!item.isJsonPrimitive() || !item.getAsString().startsWith("@")) return new ArrayList<>();
+			names.add(item.getAsString().substring(1));
+		}
+		return names;
+	}
+
 	static LevelDraft of(Identifier id, String source) {
 		// старые файлы с start и character_starts читаются как чекпоинты
 		JsonObject json = com.smeshariki.level.definition.LegacyTriggers.migrate(com.smeshariki.level.definition.LegacyCheckpoints.migrate(JsonParser.parseString(source))).getAsJsonObject();
@@ -219,8 +235,8 @@ final class LevelDraft {
 			if (object.has("checkpoints")) for (JsonElement checkpoint : object.getAsJsonArray("checkpoints")) mission.checkpoints.add(CheckpointDraft.of(checkpoint));
 			// поле раньше называлось restore
 			String areaKey = object.has("area") ? "area" : "restore";
-			mission.area = location(object, areaKey);
-			if (mission.area.isEmpty() && object.has(areaKey)) mission.areaRaw = object.get(areaKey);
+			mission.areas.addAll(locations(object.get(areaKey)));
+			if (mission.areas.isEmpty() && object.has(areaKey)) mission.areaRaw = object.get(areaKey);
 			mission.orders = object.get("orders");
 			mission.gear = object.get("gear");
 			mission.resetWait = object.has("reset_wait") && object.get("reset_wait").isJsonPrimitive() ? Math.clamp(object.get("reset_wait").getAsInt(), 0, 60) : 0;
@@ -413,8 +429,12 @@ final class LevelDraft {
 			if (element != null) checkpoints.add(element);
 		}
 		json.add("checkpoints", checkpoints);
-		if (!mission.area.isEmpty()) json.addProperty("area", "@" + mission.area);
-		else if (mission.areaRaw != null) json.add("area", mission.areaRaw);
+		if (mission.areas.size() == 1) json.addProperty("area", "@" + mission.areas.getFirst());
+		else if (!mission.areas.isEmpty()) {
+			JsonArray areas = new JsonArray();
+			for (String area : mission.areas) areas.add("@" + area);
+			json.add("area", areas);
+		} else if (mission.areaRaw != null) json.add("area", mission.areaRaw);
 		if (mission.orders != null) json.add("orders", mission.orders);
 		if (mission.gear != null) json.add("gear", mission.gear);
 		if (mission.resetWait > 0) json.addProperty("reset_wait", mission.resetWait);

@@ -21,7 +21,7 @@ import net.minecraft.world.phys.Vec3;
  *
  * @param id имя внутри уровня, на него ссылаются события
  * @param description описание миссии: показывается по кнопке «Подробнее» рядом со списком задач на экране
- * @param area поле {@code area} (раньше {@code restore}, тоже читается): область миссии. Всё в ней возвращается при сбросе задачи миссии и в конце
+ * @param areas поле {@code area} (раньше {@code restore}, тоже читается; одна область или список): области миссии. Всё в них возвращается при сбросе задачи миссии и в конце
  *             уровня: подвижное (шары со стропами и топливом, плоты, маркеры волн, лава — всё, что механики умеют запоминать) — каким было в
  *             начале миссии, блоки — к текущей версии мира (BuildMod, V).
  * @param checkpoints поле {@code checkpoints}: чекпоинты миссии по приоритету ({@link Checkpoint}), не меньше двух: начало и конец. В начале миссии каждый участник
@@ -36,19 +36,21 @@ import net.minecraft.world.phys.Vec3;
  * @param guide поле {@code guide}: куда игроку бежать, область или точка ({@code "@имя"}). Пока миссия идёт, перед игроком висит полупрозрачная стрелка и показывает на цель;
  *              без поля стрелка показывает на область идущей задачи «добраться до области» (клиент рисует её сам, {@code GuideArrow})
  */
-public record MissionEntry(String id, Component title, Component description, List<TaskEntry> tasks, Optional<TaskArea> area, List<Checkpoint> checkpoints, List<com.smeshariki.level.definition.OrderEntry> orders,
+public record MissionEntry(String id, Component title, Component description, List<TaskEntry> tasks, List<TaskArea> areas, List<Checkpoint> checkpoints, List<com.smeshariki.level.definition.OrderEntry> orders,
 		Map<Identifier, List<Identifier>> gear, int resetWait, Optional<Either<Vec3, TaskArea>> guide, List<com.smeshariki.level.definition.Trigger> triggers) {
 	/** Ближе этого к точке-чекпоинту игрок «на чекпоинте» (его не переносят, он засчитан), блоков по горизонтали. */
 	public static final double START_RADIUS = 4;
 	private static final Codec<Either<Vec3, TaskArea>> PLACE = Checkpoint.PLACE;
+	/** Одна область или список областей: в файле {@code "@имя"} или {@code ["@имя", "@имя"]}. */
+	private static final Codec<List<TaskArea>> AREAS = Codec.withAlternative(TaskArea.CODEC.listOf(), TaskArea.CODEC.xmap(List::of, list -> list.getFirst()));
 
 	public static final Codec<MissionEntry> CODEC = RecordCodecBuilder.create(i -> i.group(
 			Codec.STRING.fieldOf("id").forGetter(MissionEntry::id),
 			ComponentSerialization.CODEC.fieldOf("title").forGetter(MissionEntry::title),
 			ComponentSerialization.CODEC.optionalFieldOf("description", Component.empty()).forGetter(MissionEntry::description),
 			TaskEntry.CODEC.listOf().fieldOf("tasks").forGetter(MissionEntry::tasks),
-			TaskArea.CODEC.optionalFieldOf("area").forGetter(MissionEntry::area),
-			TaskArea.CODEC.optionalFieldOf("restore").forGetter(m -> Optional.empty()),
+			AREAS.optionalFieldOf("area").forGetter(m -> m.areas.isEmpty() ? Optional.empty() : Optional.of(m.areas)),
+			AREAS.optionalFieldOf("restore").forGetter(m -> Optional.empty()),
 			Checkpoint.CODEC.listOf().optionalFieldOf("checkpoints", List.of()).forGetter(MissionEntry::checkpoints),
 			com.smeshariki.level.definition.OrderEntry.CODEC.listOf().optionalFieldOf("orders", List.of()).forGetter(MissionEntry::orders),
 			Codec.unboundedMap(Identifier.CODEC, net.minecraft.util.ExtraCodecs.compactListCodec(Identifier.CODEC)).optionalFieldOf("gear", Map.of()).forGetter(MissionEntry::gear),
@@ -56,7 +58,7 @@ public record MissionEntry(String id, Component title, Component description, Li
 			PLACE.optionalFieldOf("guide").forGetter(MissionEntry::guide),
 			com.smeshariki.level.definition.Trigger.CODEC.listOf().optionalFieldOf("triggers", List.of()).forGetter(MissionEntry::triggers)
 	).apply(i, (id, title, description, tasks, area, legacyRestore, checkpoints, orders, gear, resetWait, guide, triggers) ->
-			new MissionEntry(id, title, description, tasks, area.or(() -> legacyRestore), checkpoints, orders, gear, resetWait, guide, triggers)));
+			new MissionEntry(id, title, description, tasks, area.or(() -> legacyRestore).orElse(List.of()), checkpoints, orders, gear, resetWait, guide, triggers)));
 
 	/** Чекпоинты этого персонажа по приоритету: общие и его собственные (кто неизвестен — только общие). Первый — начало, последний — конец. */
 	public List<Checkpoint> checkpointsFor(@Nullable Identifier role) {

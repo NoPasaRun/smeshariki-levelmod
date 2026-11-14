@@ -16,7 +16,7 @@ import net.minecraft.resources.Identifier;
  */
 public record LevelEvent(Kind kind, String subject) {
 	public enum Kind {
-		LEVEL_STARTED, LEVEL_COMPLETED, LEVEL_ABANDONED, MISSION_STARTED, MISSION_COMPLETED, TASK_STARTED, TASK_COMPLETED, TASK_FAILED, TASK_RESET, CUTSCENE_STARTED, CUTSCENE_FINISHED, CUSTOM, MISSION_RESET, MISSION_RESUMED, CHECKPOINT_REACHED, CHECKPOINT_RESET, EXTERNAL;
+		LEVEL_STARTED, LEVEL_COMPLETED, LEVEL_ABANDONED, MISSION_STARTED, MISSION_COMPLETED, TASK_STARTED, TASK_COMPLETED, TASK_FAILED, TASK_RESET, CUTSCENE_STARTED, CUTSCENE_FINISHED, CUSTOM, MISSION_RESET, MISSION_RESUMED, CHECKPOINT_REACHED, CHECKPOINT_RESET, CHECKPOINT_RESUMED, EXTERNAL;
 
 		private final String key = name().toLowerCase(Locale.ROOT);
 
@@ -57,10 +57,18 @@ public record LevelEvent(Kind kind, String subject) {
 		return new LevelEvent(Kind.CHECKPOINT_RESET, mission + ":" + number);
 	}
 
+	/**
+	 * Ожидание после отката на чекпоинт кончилось (у чекпоинта своё время ожидания, {@code reset_wait}); без ожидания событие приходит сразу после отката. С него
+	 * стоит запускать то, что бьёт по игроку, для конкретного чекпоинта: откат на второй чекпоинт не должен пускать волны лавы с первой.
+	 */
+	public static LevelEvent checkpointResumed(String mission, int number) {
+		return new LevelEvent(Kind.CHECKPOINT_RESUMED, mission + ":" + number);
+	}
+
 	/** Миссия, которой принадлежит событие чекпоинта, или пусто. */
 	public String checkpointMission() {
 		int colon = subject.lastIndexOf(':');
-		return (kind == Kind.CHECKPOINT_REACHED || kind == Kind.CHECKPOINT_RESET) && colon > 0 ? subject.substring(0, colon) : "";
+		return (kind == Kind.CHECKPOINT_REACHED || kind == Kind.CHECKPOINT_RESET || kind == Kind.CHECKPOINT_RESUMED) && colon > 0 ? subject.substring(0, colon) : "";
 	}
 
 	public static LevelEvent missionCompleted(String mission) {

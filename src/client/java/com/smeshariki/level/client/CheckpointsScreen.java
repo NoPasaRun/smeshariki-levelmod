@@ -19,7 +19,7 @@ import net.minecraft.resources.Identifier;
  * привязать к одному персонажу (у каждого свой дом). Достигнутый чекпоинт важнее всех выше него: сброс возвращает на самый дальний из достигнутых.
  */
 final class CheckpointsScreen extends ListScreen {
-	private static final int W = 460, ROW = 24, H = 20, TOP = 44, WHO_W = 110, BUTTON_W = 20, GEAR_W = 20;
+	private static final int W = 460, ROW = 24, H = 20, TOP = 44, WHO_W = 110, BUTTON_W = 20, GEAR_W = 20, WAIT_W = 34;
 
 	private final LevelDraft level;
 	private final LevelDraft.MissionDraft mission;
@@ -60,7 +60,7 @@ final class CheckpointsScreen extends ListScreen {
 			int index = i;
 			LevelDraft.CheckpointDraft checkpoint = list.get(i);
 			int y = TOP + (i - bar.scroll) * ROW;
-			int placeW = w - WHO_W - GEAR_W - 3 * BUTTON_W - 12;
+			int placeW = w - WHO_W - WAIT_W - GEAR_W - 3 * BUTTON_W - 14;
 			addRenderableWidget(Button.builder(Component.literal((i + 1) + ". ").append(placeName(checkpoint)), b -> minecraft.gui.setScreen(new LocationPickerScreen(this, (Boolean) null, name -> {
 				if (name.isEmpty()) return;
 				checkpoint.location = name;
@@ -72,11 +72,21 @@ final class CheckpointsScreen extends ListScreen {
 				who.addAll(level.boundCharacters());
 				SelectScreen.open(this, Component.translatable("gui.levelmod.select.checkpoint_character"), who, CheckpointsScreen::characterName, checkpoint.character, c -> checkpoint.character = c);
 			}).bounds(x + placeW + 2, y, WHO_W, H).build());
+			// ожидание после отката на этот чекпоинт, с; пусто — как у миссии
+			net.minecraft.client.gui.components.EditBox wait = LevelEditorScreen.field(this, font, x + placeW + WHO_W + 4, y, WAIT_W, "gui.levelmod.checkpoints.wait", checkpoint.resetWait == null ? "" : Integer.toString(checkpoint.resetWait), 2, v -> {
+				try {
+					checkpoint.resetWait = v.isBlank() ? null : Math.clamp(Integer.parseInt(v.trim()), 0, 60);
+				} catch (NumberFormatException e) {
+					checkpoint.resetWait = null;
+				}
+			});
+			wait.setTooltip(Tooltip.create(Component.translatable("gui.levelmod.checkpoints.wait.tip", mission.resetWait)));
+			addRenderableWidget(wait);
 			// ячейки отката и действие при входе
 			boolean extra = !checkpoint.resets.isEmpty() || checkpoint.enterAction != null || checkpoint.enterRaw != null;
 			addRenderableWidget(Button.builder(Component.literal(extra ? "§e⚙" : "⚙"), b -> minecraft.gui.setScreen(new CheckpointScreen(this, checkpoint, index + 1)))
-					.bounds(x + placeW + WHO_W + 4, y, GEAR_W, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.checkpoints.settings"))).build());
-			int bx = x + placeW + WHO_W + GEAR_W + 6;
+					.bounds(x + placeW + WHO_W + WAIT_W + 6, y, GEAR_W, H).tooltip(Tooltip.create(Component.translatable("gui.levelmod.checkpoints.settings"))).build());
+			int bx = x + placeW + WHO_W + WAIT_W + GEAR_W + 8;
 			addMoveButtons(bx, y, i, list.size(), by -> move(index, by), Component.translatable("gui.levelmod.checkpoints.up"), Component.translatable("gui.levelmod.checkpoints.down"));
 			addDelete(bx + MOVE_W + 1, y, () -> {
 				list.remove(checkpoint);
