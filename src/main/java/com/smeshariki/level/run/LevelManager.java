@@ -129,6 +129,17 @@ public final class LevelManager {
 		ServerPlayNetworking.registerGlobalReceiver(LevelSave.TYPE, (msg, ctx) -> save(ctx.player(), msg));
 		PayloadTypeRegistry.serverboundPlay().register(LevelLocationEdit.TYPE, LevelLocationEdit.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(LevelLocationEdit.TYPE, (msg, ctx) -> editLocation(ctx.player(), msg));
+		PayloadTypeRegistry.serverboundPlay().register(com.smeshariki.level.net.LevelLocationReset.TYPE, com.smeshariki.level.net.LevelLocationReset.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(com.smeshariki.level.net.LevelLocationReset.TYPE, (msg, ctx) -> {
+			ServerPlayer player = ctx.player();
+			if (!canEdit(player)) return;
+			UUID id = player.getUUID();
+			MinecraftServer server = player.level().getServer();
+			resetPlace(server, msg.name(), text -> {
+				ServerPlayer p = server.getPlayerList().getPlayer(id);
+				if (p != null) p.sendOverlayMessage(text);
+			});
+		});
 		PayloadTypeRegistry.serverboundPlay().register(com.smeshariki.level.net.LevelGroupEdit.TYPE, com.smeshariki.level.net.LevelGroupEdit.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(com.smeshariki.level.net.LevelGroupEdit.TYPE, (msg, ctx) -> editGroup(ctx.player(), msg));
 		PayloadTypeRegistry.serverboundPlay().register(LevelTestTask.TYPE, LevelTestTask.CODEC);
@@ -191,6 +202,9 @@ public final class LevelManager {
 			resumeServer = null;
 			AreaCleanup.clear();
 			WorldReset.clear();
+			RESET_AREAS.clear();
+			MARKED.clear();
+			PREPARING.clear();
 			for (UUID id : List.copyOf(SPECTATORS.keySet())) stopSpectating(server, id, false);
 			HOLD_PENDING.clear();
 			HOLDS.clear();
@@ -256,6 +270,18 @@ public final class LevelManager {
 	 * уровень. В уровне без персонажа игрока смешарик его роли приходит к нему сам (после гибели — к началу задачи).
 	 */
 	private static void initSingletons() {
+		// локации-области по имени для механик (мяч GameplayMod держится в своей)
+		com.smeshariki.gameplay.api.Mechanics.setPlaces(new com.smeshariki.gameplay.api.Mechanics.Places() {
+			@Override
+			public com.smeshariki.gameplay.api.Mechanics.Area area(MinecraftServer server, String name) {
+				return LevelStore.get(server).locationAreas().get(name);
+			}
+
+			@Override
+			public java.util.Collection<String> names(MinecraftServer server) {
+				return new java.util.TreeSet<>(LevelStore.get(server).locationAreas().keySet());
+			}
+		});
 		Singletons.setHomes((server, type, dying) -> {
 			if (dying != null && inRunningLevel(server, dying)) return Optional.empty();
 			String name = HOMES.get(EntityType.getKey(type).toString());
@@ -709,6 +735,32 @@ public final class LevelManager {
 		syncNeeded = true;
 	}
 
+	/**
+	 * Откат одной области-локации к текущей сохранённой версии мира (окно локаций, {@code /level reset}; 2026-11-20, по просьбе): тем же движком, что перед
+	 * уровнем ({@link WorldReset#prepare}) — только внутри контура, блоки и сущности, по всей высоте. Не во время уровня или проверки и не во время другого отката.
+	 *
+	 * @return начат ли откат
+	 */
+	static boolean resetPlace(MinecraftServer server, String name, java.util.function.Consumer<Component> reply) {
+		String key = name.trim().startsWith("@") ? name.trim().substring(1) : name.trim();
+		TaskArea area = LevelStore.get(server).locationAreas().get(key);
+		if (area == null) {
+			reply.accept(Component.translatable("message.levelmod.place_reset.not_area", key));
+			return false;
+		}
+		if (LevelStore.get(server).runs().stream().anyMatch(run -> run.state() == LevelRun.State.RUNNING) || testing()) {
+			reply.accept(Component.translatable("message.levelmod.place_reset.running"));
+			return false;
+		}
+		Map<String, Set<TaskArea>> areas = Map.of(area.dimension().identifier().toString(), Set.of(area));
+		if (!WorldReset.prepare(server, areas, () -> reply.accept(Component.translatable("message.levelmod.place_reset.done", key)))) {
+			reply.accept(Component.translatable("message.levelmod.place_reset.busy"));
+			return false;
+		}
+		if (WorldReset.busy(server)) reply.accept(Component.translatable("message.levelmod.place_reset.started", key));
+		return true;
+	}
+
 	private static void editLocation(ServerPlayer player, LevelLocationEdit edit) {
 		String name = edit.name().trim();
 		if (!canEdit(player) || name.isEmpty() || name.length() > LevelLocationEdit.MAX_NAME) return;
@@ -816,7 +868,9 @@ public final class LevelManager {
 			// начинается, когда персонаж выбран: от него зависит, какие задачи показать
 			if (run.state() == LevelRun.State.GATHERING) {
 				if (player == null || !CharacterEntity.isPossessing(player)) return false;
-				run.begin();
+				// сначала области миссии возвращаются к версии, потом проверка начинается (tickPreparing)
+				beginPrepared(run);
+				return false;
 			}
 			run.tick();
 			if (run.takeChanged()) syncNeeded = true;
@@ -900,8 +954,8 @@ public final class LevelManager {
 	}
 
 	/**
-	 * Цель стрелки игрока: явное поле миссии {@code guide} (область или точка), а без него область идущей задачи «добраться до области» его персонажа;
-	 * середина области. {@code null} — стрелки нет (цели нет, миссия не идёт или игрок уже дошёл до явной цели).
+	 * Цель стрелки игрока — только поле миссии {@code guide} (область или точка; у области — середина). Без него стрелки нет (2026-11-20, по просьбе:
+	 * раньше она показывала на область идущей задачи «добраться до области»). {@code null} — стрелки нет (цели нет, миссия не идёт или игрок дошёл до цели).
 	 */
 	private static double @org.jetbrains.annotations.Nullable [] guideOf(ServerPlayer player) {
 		for (LevelRun run : runsOf(player)) {
@@ -917,11 +971,6 @@ public final class LevelManager {
 				if (inside) GUIDE_REACHED.put(player.getUUID(), key);
 				if (java.util.Arrays.equals(GUIDE_REACHED.get(player.getUUID()), key)) return null;
 				return key;
-			}
-			TaskArea reach = run.reachTarget(player.getUUID());
-			if (reach != null) {
-				Vec3 target = centerOf(reach);
-				return new double[] {target.x, target.z};
 			}
 		}
 		// миссия со стрелкой кончилась: следующая начнётся заново
@@ -962,6 +1011,7 @@ public final class LevelManager {
 			store.setDirty();
 		}
 		trackChunks(server, store);
+		tickPreparing(server, store);
 		tickFrozen(server);
 		tickWaiting(server);
 		syncMechanics(server, store);
@@ -977,36 +1027,106 @@ public final class LevelManager {
 		}
 	}
 
-	/** Радиус (в чанках) вокруг игрока, который считается тронутым: дальность руки и обстрелов, края вида не нужны. */
-	private static final int TOUCH_RADIUS = 2;
 	/** Предел чанков одной области миссии, чтобы огромный контур не раздул отметки. */
 	private static final int TOUCH_AREA_CAP = 4096;
+	/**
+	 * Области, по которым пойдёт откат мира после уровня или проверки (по измерению). Только в памяти: отметки чанков ({@link LevelStore#touch}) переживают
+	 * перезапуск, а точный контур — нет; после перезапуска откат вернёт отмеченные чанки целиком.
+	 */
+	private static final Map<String, Set<TaskArea>> RESET_AREAS = new HashMap<>();
+	/** Прогоны, чьи области уже отмечены (по тождеству): отмечать раз в 10 тиков все чанки всех миссий незачем. */
+	private static final Set<LevelRun> MARKED = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
 
-	/** Запоминает чанки, где идёт уровень или проверка: откат мира возвращает только их (оптимизация, {@link WorldReset}). */
-	private static void trackChunks(MinecraftServer server, LevelStore store) {
-		if (server.getTickCount() % 10 != 0) return;
-		List<LevelRun> running = new ArrayList<>(store.runs());
-		// проверка миссии или задачи тоже меняет мир (лава, шары, блоки), и после неё мир откатывается
-		running.addAll(TESTS.values());
-		for (LevelRun run : running) {
-			if (run.state() != LevelRun.State.RUNNING) continue;
-			for (LevelRun.Participant participant : run.participants()) {
-				ServerPlayer player = server.getPlayerList().getPlayer(participant.id());
-				if (player == null) continue;
-				Entity root = player.getRootVehicle();
-				String dimension = root.level().dimension().identifier().toString();
-				int cx = root.chunkPosition().x(), cz = root.chunkPosition().z();
-				for (int dx = -TOUCH_RADIUS; dx <= TOUCH_RADIUS; dx++) for (int dz = -TOUCH_RADIUS; dz <= TOUCH_RADIUS; dz++) store.touch(dimension, net.minecraft.world.level.ChunkPos.pack(cx + dx, cz + dz));
-			}
-			// область миссии: лава, шары и обстрелы работают и там, где никого нет
-			MissionEntry mission = run.currentMission();
-			if (mission == null) continue;
+	/** Забрать области отката (их зовёт {@link WorldReset}, когда откат начинается). */
+	static Map<String, Set<TaskArea>> takeResetAreas() {
+		Map<String, Set<TaskArea>> out = new HashMap<>(RESET_AREAS);
+		RESET_AREAS.clear();
+		MARKED.clear();
+		return out;
+	}
+
+	/** Области всех миссий прогона по измерению (у проверки миссия одна); слишком большие пропускаются с предупреждением. */
+	static Map<String, Set<TaskArea>> areasOf(LevelRun run) {
+		Map<String, Set<TaskArea>> out = new HashMap<>();
+		for (MissionEntry mission : run.definition().missions()) {
 			for (TaskArea area : mission.areas()) {
 				double[] b = area.boundsXZ();
 				int x0 = (int) Math.floor(b[0]) >> 4, z0 = (int) Math.floor(b[1]) >> 4, x1 = (int) Math.floor(b[2]) >> 4, z1 = (int) Math.floor(b[3]) >> 4;
-				if ((long) (x1 - x0 + 1) * (z1 - z0 + 1) > TOUCH_AREA_CAP) continue;
-				String dimension = area.dimension().identifier().toString();
-				for (int x = x0; x <= x1; x++) for (int z = z0; z <= z1; z++) store.touch(dimension, net.minecraft.world.level.ChunkPos.pack(x, z));
+				if ((long) (x1 - x0 + 1) * (z1 - z0 + 1) > TOUCH_AREA_CAP) {
+					LevelMod.LOGGER.warn("Область миссии {} больше {} чанков: не откатывается", mission.id(), TOUCH_AREA_CAP);
+					continue;
+				}
+				out.computeIfAbsent(area.dimension().identifier().toString(), d -> new HashSet<>()).add(area);
+			}
+		}
+		return out;
+	}
+
+	/** Чанки прямоугольников вокруг контуров; что вне контура, откат не тронет (фильтр столбцов и сущностей в {@link WorldReset}). Общие чанки — один раз. */
+	static Map<String, Set<Long>> chunksOf(Map<String, Set<TaskArea>> areas) {
+		Map<String, Set<Long>> out = new HashMap<>();
+		areas.forEach((dimension, list) -> {
+			Set<Long> chunks = out.computeIfAbsent(dimension, d -> new HashSet<>());
+			for (TaskArea area : list) {
+				double[] b = area.boundsXZ();
+				int x0 = (int) Math.floor(b[0]) >> 4, z0 = (int) Math.floor(b[1]) >> 4, x1 = (int) Math.floor(b[2]) >> 4, z1 = (int) Math.floor(b[3]) >> 4;
+				for (int x = x0; x <= x1; x++) for (int z = z0; z <= z1; z++) chunks.add(net.minecraft.world.level.ChunkPos.pack(x, z));
+			}
+		});
+		return out;
+	}
+
+	/**
+	 * Отмечает, что откатить после конца (2026-11-20, решение пользователя): после проверки — только области проверяемой миссии, после уровня — сумма областей
+	 * всех его миссий (общие чанки не повторяются). Окрестности игроков больше не отмечаются: без областей у миссий откатывать нечего.
+	 */
+	private static void trackChunks(MinecraftServer server, LevelStore store) {
+		if (server.getTickCount() % 10 != 0) return;
+		List<LevelRun> running = new ArrayList<>();
+		for (LevelRun run : store.runs()) if (run.state() == LevelRun.State.RUNNING && MARKED.add(run)) running.add(run);
+		for (LevelRun run : TESTS.values()) if (run.state() == LevelRun.State.RUNNING && MARKED.add(run)) running.add(run);
+		for (LevelRun run : running) {
+			Map<String, Set<TaskArea>> areas = areasOf(run);
+			areas.forEach((dimension, list) -> RESET_AREAS.computeIfAbsent(dimension, d -> new HashSet<>()).addAll(list));
+			chunksOf(areas).forEach((dimension, chunks) -> chunks.forEach(chunk -> store.touch(dimension, chunk)));
+		}
+	}
+
+	/** Прогоны, ждущие отката своих областей перед началом (по тождеству): начинаются, когда он кончился. Только в памяти — как и сам откат перед стартом. */
+	private static final Map<LevelRun, boolean[]> PREPARING = new java.util.IdentityHashMap<>();
+
+	/** Начать прогон после отката областей его миссий к версии (2026-11-20, по просьбе: «откат областей миссий до начала уровня и до начала проверки»). */
+	private static void beginPrepared(LevelRun run) {
+		PREPARING.putIfAbsent(run, new boolean[2]);
+	}
+
+	/** [0] — откат запущен, [1] — кончился. Прогон, переставший ждать (брошен, начат иначе, убран), забывается. */
+	private static void tickPreparing(MinecraftServer server, LevelStore store) {
+		var it = PREPARING.entrySet().iterator();
+		while (it.hasNext()) {
+			var entry = it.next();
+			LevelRun run = entry.getKey();
+			boolean[] state = entry.getValue();
+			boolean alive = run.state() == LevelRun.State.GATHERING && (store.runs().contains(run) || TESTS.containsValue(run));
+			if (!alive) {
+				it.remove();
+				continue;
+			}
+			if (!state[0]) {
+				Map<String, Set<TaskArea>> areas = areasOf(run);
+				if (areas.isEmpty()) state[1] = true;
+				else if (WorldReset.prepare(server, areas, () -> state[1] = true)) state[0] = true;
+				if (!state[1]) {
+					for (UUID id : run.online()) {
+						ServerPlayer player = server.getPlayerList().getPlayer(id);
+						if (player != null) player.sendOverlayMessage(Component.translatable("message.levelmod.preparing"));
+					}
+				}
+			}
+			if (state[1]) {
+				it.remove();
+				run.begin();
+				syncNeeded = true;
 			}
 		}
 	}
@@ -1080,7 +1200,7 @@ public final class LevelManager {
 				run = LevelRun.gather(command.level(), definition, new Host(server, false));
 				run.addParticipant(id, name);
 				store.runs().add(run);
-				if (definition.maxPlayers() == 1) run.begin();
+				if (definition.maxPlayers() == 1) beginPrepared(run);
 			}
 			case LevelCommand.JOIN -> {
 				if (run == null || mine) return;
@@ -1103,7 +1223,7 @@ public final class LevelManager {
 						return;
 					}
 				}
-				run.begin();
+				beginPrepared(run);
 			}
 			case LevelCommand.LEAVE -> {
 				if (!mine) return;

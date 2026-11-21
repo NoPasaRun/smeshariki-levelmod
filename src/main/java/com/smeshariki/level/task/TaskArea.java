@@ -128,6 +128,31 @@ public record TaskArea(ResourceKey<Level> dimension, List<List<Point>> loops, Li
 		return inside;
 	}
 
+	/** Ближайшая точка контуров по горизонтали, сдвинутая на {@code 0,05} к середине отрезка внутрь (мяч GameplayMod встаёт на границу). */
+	@Override
+	public @org.jetbrains.annotations.Nullable Vec3 nearestEdge(Vec3 pos) {
+		Vec3 best = null;
+		double bestD = Double.MAX_VALUE;
+		for (List<Point> loop : loops) {
+			for (int i = 0, j = loop.size() - 1; i < loop.size(); j = i++) {
+				Point p = loop.get(j), q = loop.get(i);
+				double ex = q.x - p.x, ez = q.z - p.z, len2 = ex * ex + ez * ez;
+				double t = len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((pos.x - p.x) * ex + (pos.z - p.z) * ez) / len2));
+				double x = p.x + ex * t, z = p.z + ez * t, d = (x - pos.x) * (x - pos.x) + (z - pos.z) * (z - pos.z);
+				if (d >= bestD) continue;
+				bestD = d;
+				best = new Vec3(x, pos.y, z);
+				// внутрь: из двух сторон отрезка та, что в области
+				double len = Math.sqrt(len2);
+				if (len > 1e-9) {
+					Vec3 a = new Vec3(x - ez / len * 0.05, pos.y, z + ex / len * 0.05), b = new Vec3(x + ez / len * 0.05, pos.y, z - ex / len * 0.05);
+					best = contains(a) ? a : contains(b) ? b : best;
+				}
+			}
+		}
+		return best;
+	}
+
 	/** Расстояние по горизонтали до ближайшей вершины границы: для оценки пути. */
 	public double distanceTo(Vec3 pos) {
 		double best = Double.MAX_VALUE;

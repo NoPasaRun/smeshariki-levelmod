@@ -26,9 +26,10 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 
 /**
- * Файлы уровней: единственное место, где живут определения уровней, — JSON в папке игры {@code levelmod/levels/<пространство>/<путь>.json}
- * (у сервера — в его корне). Они читаются при загрузке мира (и при перезагрузке данных); редактор пишет в файл и в память одновременно.
- * Папка лежит вне мира намеренно: откат версии мира и откат блоков после уровня её не трогают, правки уровней не пропадают вместе с версией.
+ * Файлы уровней: единственное место, где живут определения уровней, — JSON в мире {@code <мир>/data/levelmod/levels/<пространство>/<путь>.json}.
+ * Они читаются при загрузке мира (и при перезагрузке данных); редактор пишет в файл и в память одновременно. Уровни ссылаются на локации мира, поэтому
+ * едут вместе с миром (копия, экспорт, релиз). Откат версии мира их не трогает: {@code data/levelmod} в версии не входит (SmesharikiMod {@code VcsServer.KEEP}),
+ * откат блоков после уровня — тоже. До 2026-11-21 папка была общей, в папке игры: переезд — {@link #moveIntoWorld}.
  * <p>
  * Уровни из мода (датапак {@code data/<мод>/level/*.json}) — заготовки: при первой загрузке каждая копируется в папку, если её там нет; список скопированных
  * лежит в {@code .seeded.json}, поэтому удалённая автором заготовка не возвращается, а правка автора не затирается. Вернуть исходный вид можно кнопкой в окне уровней.
@@ -45,9 +46,41 @@ public final class LevelFiles {
 	private LevelFiles() {
 	}
 
-	/** Папка уровней. */
+	/** Папка уровней этого мира: {@code <мир>/data/levelmod/levels}. */
 	public static Path dir(MinecraftServer server) {
+		return com.smeshariki.mod.WorldData.path(server, LevelMod.NAMESPACE, "levels");
+	}
+
+	/** Прежняя общая папка уровней вне мира ({@code <папка игры>/data/levelmod/levels}, ещё раньше {@code <папка игры>/levelmod/levels}). */
+	private static Path gameDir() {
 		return com.smeshariki.level.ModData.moved(com.smeshariki.level.ModData.game("levelmod", "levels"), com.smeshariki.level.ModData.dir().resolve("levels"));
+	}
+
+	/**
+	 * Переезд из общей папки игры в мир (2026-11-21): если в мире папки уровней ещё нет, а этот мир размечали (в папке игры есть его локации
+	 * {@code data/levelmod/worlds/<мир>/places.json}), общая папка копируется в мир целиком, вместе с {@code .seeded.json}. Общая папка не трогается:
+	 * её могут ждать другие миры, и она остаётся копией. Миры, которые не размечали, получают только заготовки мода.
+	 */
+	private static void moveIntoWorld(MinecraftServer server) {
+		Path target = dir(server);
+		if (Files.exists(target)) return;
+		Path world = com.smeshariki.mod.WorldData.root(server).toAbsolutePath().normalize();
+		String name = world.getFileName() == null ? "" : world.getFileName().toString();
+		Path marker = com.smeshariki.level.ModData.dir().resolve("worlds").resolve(name).resolve("places.json");
+		Path source = gameDir();
+		if (name.isEmpty() || !Files.isRegularFile(marker) || !Files.isDirectory(source)) return;
+		Path tmp = target.resolveSibling("levels.tmp");
+		try (Stream<Path> walk = Files.walk(source)) {
+			for (Path from : (Iterable<Path>) walk::iterator) {
+				Path to = tmp.resolve(source.relativize(from).toString());
+				if (Files.isDirectory(from)) Files.createDirectories(to);
+				else Files.copy(from, to, StandardCopyOption.REPLACE_EXISTING);
+			}
+			Files.move(tmp, target);
+			LevelMod.LOGGER.info("Уровни скопированы в мир: {} -> {}", source, target);
+		} catch (IOException | RuntimeException e) {
+			LevelMod.LOGGER.error("Не удалось скопировать уровни {} в мир {}", source, target, e);
+		}
 	}
 
 	private static Path fileOf(MinecraftServer server, Identifier id) {
@@ -56,6 +89,7 @@ public final class LevelFiles {
 
 	/** Привести файлы в порядок и прочитать их: перенос из мира, заготовки из мода, чтение. Безопасно звать сколько угодно раз. */
 	public static void sync(MinecraftServer server, Map<Identifier, JsonElement> templates, LevelStore store) {
+		moveIntoWorld(server);
 		try {
 			Files.createDirectories(dir(server));
 		} catch (IOException e) {

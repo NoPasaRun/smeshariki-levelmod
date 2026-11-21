@@ -36,12 +36,15 @@ final class EntityRestore {
 	}
 
 	/** Заменяет сущности чанка версионными; возвращает, сколько ваниль не приняла (UUID ещё занят) — тогда звать позже ещё раз. */
-	static int apply(ServerLevel level, ChunkPos pos, List<CompoundTag> tags) {
+	static int apply(ServerLevel level, ChunkPos pos, List<CompoundTag> tags, java.util.function.BiPredicate<Double, Double> inside) {
 		AABB box = new AABB(pos.getMinBlockX(), level.getMinY(), pos.getMinBlockZ(), pos.getMaxBlockX() + 1, level.getMaxY(), pos.getMaxBlockZ() + 1);
-		for (Entity entity : level.getEntities((Entity) null, box, e -> !isProtected(e) && e.chunkPosition().equals(pos))) com.smeshariki.gameplay.raft.BalloonSnapshots.discardQuietly(entity);
+		// только внутри контура отката: снаружи сущности чанка не трогаются, из версии не ставятся
+		for (Entity entity : level.getEntities((Entity) null, box, e -> !isProtected(e) && e.chunkPosition().equals(pos) && inside.test(e.getX(), e.getZ()))) com.smeshariki.gameplay.raft.BalloonSnapshots.discardQuietly(entity);
 		int failed = 0;
 		EntitySpawnRequest request = new EntitySpawnRequest(EntitySpawnReason.LOAD, true);
 		for (CompoundTag tag : tags) {
+			net.minecraft.nbt.ListTag at = tag.getListOrEmpty("Pos");
+			if (at.size() >= 3 && !inside.test(at.getDoubleOr(0, 0), at.getDoubleOr(2, 0))) continue;
 			Entity entity;
 			try {
 				entity = EntityType.loadEntityRecursive(tag.copy(), level, request, EntityProcessor.NOP);

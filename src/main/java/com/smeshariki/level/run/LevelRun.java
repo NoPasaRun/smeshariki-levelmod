@@ -812,18 +812,6 @@ public final class LevelRun {
 		held.clear();
 	}
 
-	/** Область, до которой игроку сейчас идти: первая идущая задача «добраться до области» его персонажа, которую он ещё не засчитал; {@code null} — такой задачи нет. */
-	public @Nullable TaskArea reachTarget(UUID player) {
-		if (state != State.RUNNING) return null;
-		for (TaskEntry entry : definition.tasks()) {
-			Progress progress = tasks.get(entry.id());
-			if (!progress.active() || !hasRole(player, entry) || !(entry.task() instanceof ReachAreaTask reach)) continue;
-			if (progress.shared + progress.credits.getOrDefault(player, 0) >= entry.task().goal()) continue;
-			return reach.target();
-		}
-		return null;
-	}
-
 	/** Общая миссия: в ней нет задач для отдельных персонажей, всё делается вместе, поэтому и ошибка одного возвращает всех. */
 	private boolean inSharedMission(TaskEntry entry) {
 		for (MissionEntry mission : definition.missions()) {

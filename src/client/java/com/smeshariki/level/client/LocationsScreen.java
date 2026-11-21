@@ -100,6 +100,12 @@ final class LocationsScreen extends UiScreen {
 			name = "";
 			rebuildWidgets();
 		}).bounds(x + half + 2, y, half, H).build());
+		y += ROW;
+		// откат области к сохранённой версии мира (только область: у точки нечего возвращать)
+		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.locations.reset"), b -> {
+			LevelList.LocationInfo current = selected();
+			if (current != null && current.area().isPresent()) ClientPlayNetworking.send(new com.smeshariki.level.net.LevelLocationReset(current.name()));
+		}).bounds(x, y, w, H).tooltip(net.minecraft.client.gui.components.Tooltip.create(Component.translatable("gui.levelmod.locations.reset.tip"))).build()).active = info != null && info.area().isPresent();
 		addRenderableWidget(Button.builder(Component.translatable("gui.levelmod.close"), b -> onClose()).bounds(x + half + 2, height - MARGIN - H, half, H).build());
 	}
 

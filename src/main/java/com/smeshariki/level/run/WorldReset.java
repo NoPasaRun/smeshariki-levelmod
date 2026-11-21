@@ -25,7 +25,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.LevelResource;
 
 /**
- * Откат блоков мира (только в чанках, где шли уровни: {@link LevelStore#touch}; без отметок — весь мир) к текущей версии (BuildMod, V) после конца любого уровня. Отметка «откат ждёт» лежит в {@link LevelStore} и переживает перезапуск;
+ * Откат блоков мира к текущей версии (после проверки — в областях проверяемой миссии, после уровня — в сумме областей его миссий, только внутри контуров:
+ * {@link LevelStore#touch}, {@code LevelManager.takeResetAreas}; без отметок отката нет) (BuildMod, V) после конца любого уровня. Отметка «откат ждёт» лежит в {@link LevelStore} и переживает перезапуск;
  * откат начинается, когда не идёт ни один прогон. Версия читается в фоне по областям порциями, блоки ставятся на сервере понемногу каждый тик: по одному чанку
  * за раз, с проверкой времени после каждого, иначе загрузка десятков чанков подряд за один тик вешала сервер на десятки секунд. Версию после разметки и
  * постройки нужно сохранять (V): откат вернёт мир к ней. Тем же движком идёт откат из окна версий V ({@link #beginManual}: весь мир, сущности тоже).
@@ -50,6 +51,16 @@ final class WorldReset {
 		/** Сущности чанков, ждущих загрузки с обработкой сущностей. */
 		final ArrayDeque<EntityTask> entityTasks = new ArrayDeque<>();
 		final java.util.concurrent.atomic.AtomicInteger handed = new java.util.concurrent.atomic.AtomicInteger();
+		/** Контуры по измерению: возвращаются только столбцы и сущности внутри них. Нет контуров у измерения — чанки целиком (откат V, после перезапуска). */
+		Map<String, Set<com.smeshariki.level.task.TaskArea>> areas = Map.of();
+
+		boolean inside(ServerLevel level, double x, double z) {
+			Set<com.smeshariki.level.task.TaskArea> list = areas.get(level.dimension().identifier().toString());
+			if (list == null || list.isEmpty()) return true;
+			net.minecraft.world.phys.Vec3 at = new net.minecraft.world.phys.Vec3(x, 0, z);
+			for (com.smeshariki.level.task.TaskArea area : list) if (area.contains(at)) return true;
+			return false;
+		}
 	}
 
 	private static Job job;
@@ -59,14 +70,16 @@ final class WorldReset {
 		final ServerLevel level;
 		final ChunkPos pos;
 		final List<net.minecraft.nbt.CompoundTag> tags;
+		final java.util.function.BiPredicate<Double, Double> inside;
 		long ready;
 		int attempts;
 		final boolean forced;
 
-		EntityTask(ServerLevel level, ChunkPos pos, List<net.minecraft.nbt.CompoundTag> tags, long ready) {
+		EntityTask(ServerLevel level, ChunkPos pos, List<net.minecraft.nbt.CompoundTag> tags, java.util.function.BiPredicate<Double, Double> inside, long ready) {
 			this.level = level;
 			this.pos = pos;
 			this.tags = tags;
+			this.inside = inside;
 			this.ready = ready;
 			this.forced = level.setChunkForced(pos.x(), pos.z(), true);
 		}
@@ -84,6 +97,9 @@ final class WorldReset {
 	private static boolean manual;
 	private static java.util.function.IntConsumer manualProgress;
 	private static java.util.function.Consumer<String> manualDone;
+	/** Откат областей перед началом уровня или проверки ({@link #prepare}): свои чанки, отметки после уровней не трогает. Только в памяти. */
+	private static boolean prestart;
+	private static Runnable prestartDone;
 
 	/** Сколько процентов отката сделано: {@code -1} — отката нет, 0 — ждёт конца прогонов или читает версию, до 99 — идёт, пока не вернулся последний чанк. */
 	static int percent(MinecraftServer server) {
@@ -117,7 +133,27 @@ final class WorldReset {
 	}
 
 	static boolean busy(MinecraftServer server) {
-		return manual || LevelStore.get(server).worldResetPending();
+		return manual || prestart || LevelStore.get(server).worldResetPending();
+	}
+
+	/**
+	 * Откат областей к версии перед началом уровня или проверки (2026-11-20, по просьбе): только внутри контуров, блоки и сущности, сразу, не дожидаясь конца
+	 * других прогонов. Отметки отката после уровней ({@link LevelStore#touch}) не трогает. {@code done} зовётся, когда откат кончился.
+	 *
+	 * @return false — сейчас идёт другой откат, звать позже
+	 */
+	static boolean prepare(MinecraftServer server, Map<String, Set<com.smeshariki.level.task.TaskArea>> areas, Runnable done) {
+		if (manual || prestart || job != null) return false;
+		prestart = true;
+		prestartDone = done;
+		start(server, false, LevelManager.chunksOf(areas), areas);
+		if (job == null) {
+			// нечего возвращать
+			prestart = false;
+			prestartDone = null;
+			done.run();
+		}
+		return true;
 	}
 
 	/**
@@ -135,7 +171,7 @@ final class WorldReset {
 		manual = true;
 		manualProgress = progress;
 		manualDone = finished;
-		start(server, true);
+		start(server, true, null, null);
 		return null;
 	}
 
@@ -146,11 +182,11 @@ final class WorldReset {
 
 	private static void tickJob(MinecraftServer server) {
 		LevelStore store = LevelStore.get(server);
-		if (!manual && !store.worldResetPending()) return;
+		if (!manual && !prestart && !store.worldResetPending()) return;
 		if (job == null) {
 			// ждёт конца всех идущих прогонов и проверок
 			if (store.runs().stream().anyMatch(run -> run.state() == LevelRun.State.RUNNING) || LevelManager.testing()) return;
-			start(server, false);
+			start(server, false, null, null);
 			if (job == null) {
 				store.setWorldResetPending(false);
 				return;
@@ -162,7 +198,7 @@ final class WorldReset {
 			EntityTask task = job.entityTasks.peek();
 			if (server.getTickCount() < task.ready) break;
 			job.entityTasks.poll();
-			int failed = EntityRestore.apply(task.level, task.pos, task.tags);
+			int failed = EntityRestore.apply(task.level, task.pos, task.tags, task.inside);
 			if (failed > 0 && ++task.attempts < 4) {
 				task.ready = server.getTickCount() + 5;
 				job.entityTasks.add(task);
@@ -188,20 +224,25 @@ final class WorldReset {
 			if (level == null) continue;
 			// с версии не менялся и не загружен (в памяти мог измениться): ни блоки, ни сущности трогать не нужно
 			if (plan.unchanged() && level.getChunkSource().getChunkNow(plan.pos().x(), plan.pos().z()) == null) continue;
-			job.restored += BlockRestore.restoreChunk(level, plan.data(), (x, z) -> true);
+			Job current = job;
+			job.restored += BlockRestore.restoreChunk(level, plan.data(), (x, z) -> current.inside(level, x + 0.5, z + 0.5));
 			job.chunks++;
-			if (job.entities) job.entityTasks.add(new EntityTask(level, plan.pos(), plan.entities(), server.getTickCount() + 3));
+			if (job.entities) job.entityTasks.add(new EntityTask(level, plan.pos(), plan.entities(), (x, z) -> current.inside(level, x, z), server.getTickCount() + 3));
 		} while (System.nanoTime() < deadline);
 	}
 
-	private static void start(MinecraftServer server, boolean full) {
+	/** @param givenChunks и {@code given} — свои чанки и контуры (подготовка перед стартом); {@code null} — отметки после уровней из {@link LevelStore}. */
+	private static void start(MinecraftServer server, boolean full, Map<String, Set<Long>> givenChunks, Map<String, Set<com.smeshariki.level.task.TaskArea>> given) {
 		Path root = server.getWorldPath(LevelResource.ROOT);
 		List<ResourceKey<Level>> dimensions = new ArrayList<>();
 		for (ServerLevel level : server.getAllLevels()) dimensions.add(level.dimension());
-		// чанки, где шли уровни; ничего не отмечено (старое сохранение, сбой) — откат по всему миру
-		Map<String, Set<Long>> touched = full ? Map.of() : LevelStore.get(server).takeTouched();
+		// чанки областей миссий; ничего не отмечено (у миссий нет областей) — откатывать нечего
+		Map<String, Set<Long>> touched = full ? Map.of() : givenChunks != null ? givenChunks : LevelStore.get(server).takeTouched();
+		Map<String, Set<com.smeshariki.level.task.TaskArea>> areas = full ? Map.of() : given != null ? given : LevelManager.takeResetAreas();
+		if (!full && touched.isEmpty()) return;
 		Job started = new Job();
-		started.entities = full || !touched.isEmpty();
+		started.entities = true;
+		started.areas = areas;
 		job = started;
 		Util.backgroundExecutor().execute(() -> {
 			try {
@@ -214,7 +255,7 @@ final class WorldReset {
 				for (ResourceKey<Level> dimension : files == null ? List.<ResourceKey<Level>>of() : dimensions) {
 					Map<Long, List<Long>> byRegion = new HashMap<>();
 					Set<Long> marked = touched.get(dimension.identifier().toString());
-					if (touched.isEmpty()) {
+					if (full) {
 						for (long region : BlockRestore.versionRegions(root, dimension)) {
 							int rx = ChunkPos.getX(region), rz = ChunkPos.getZ(region);
 							List<Long> keys = new ArrayList<>();
@@ -265,8 +306,12 @@ final class WorldReset {
 	private static void finish(MinecraftServer server, LevelStore store) {
 		boolean failed = job.failed;
 		java.util.function.Consumer<String> done = manual ? manualDone : null;
+		Runnable prepared = prestart ? prestartDone : null;
 		job = null;
-		if (manual) {
+		if (prestart) {
+			prestart = false;
+			prestartDone = null;
+		} else if (manual) {
 			manual = false;
 			manualProgress = null;
 			manualDone = null;
@@ -278,6 +323,7 @@ final class WorldReset {
 		// вернувшийся блок мог встать на игрока
 		for (ServerPlayer player : server.getPlayerList().getPlayers()) BlockRestore.unstick(player);
 		if (done != null) done.accept(failed ? "версия мира не прочиталась, подробности в логе" : null);
+		if (prepared != null) prepared.run();
 	}
 
 	static void clear() {
@@ -289,5 +335,7 @@ final class WorldReset {
 		manual = false;
 		manualProgress = null;
 		manualDone = null;
+		prestart = false;
+		prestartDone = null;
 	}
 }

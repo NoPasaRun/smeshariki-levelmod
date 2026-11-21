@@ -149,7 +149,7 @@ public final class LevelStore extends SavedData {
 		return store;
 	}
 
-	// ---------------------------------------------------------------- локации и группы: файл вне мира
+	// ---------------------------------------------------------------- локации и группы: файл в мире
 
 	/** Файл локаций и реестра групп этого мира; пока он не подключён (или не вышло прочитать), всё лежит в {@code levels.dat}, как раньше. */
 	private boolean bound, placesInFile;
@@ -159,7 +159,8 @@ public final class LevelStore extends SavedData {
 	private static final com.google.gson.Gson PLACES_GSON = new com.google.gson.GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
 	/**
-	 * Локации и реестр групп живут в файле {@code <папка игры>/data/levelmod/worlds/<папка мира>/places.json}: вне мира, поэтому откат версии мира их не трогает.
+	 * Локации и реестр групп живут в файле мира {@code <мир>/data/levelmod/places.json} (до 2026-11-21 — вне мира, {@code <папка игры>/data/levelmod/worlds/<мир>/};
+	 * оттуда копируются один раз). Откат версии мира их не трогает: {@code data/levelmod} в версии не входит.
 	 * Данные, лежавшие в {@code levels.dat}, переезжают один раз: сначала копия {@code levels.dat.pre_places.bak}, потом запись файла и проверка чтением;
 	 * только после этого из {@code levels.dat} они перестают писаться. Если файл не вышло записать или прочитать, всё остаётся как было.
 	 */
@@ -167,17 +168,16 @@ public final class LevelStore extends SavedData {
 		bound = true;
 		java.nio.file.Path world = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).toAbsolutePath().normalize();
 		String name = world.getFileName() == null ? "world" : world.getFileName().toString();
-		placesFile = com.smeshariki.level.ModData.moved(com.smeshariki.level.ModData.game("levelmod", "worlds"), com.smeshariki.level.ModData.dir().resolve("worlds")).resolve(name).resolve("places.json");
-		// мир из архива (инструмент экспорта SmesharikiMod): локации лежат в самом мире, а у получателя файла по имени его папки ещё нет
-		java.nio.file.Path bundled = world.resolve("data").resolve("levelmod").resolve("places.json");
-		if (!java.nio.file.Files.isRegularFile(bundled)) bundled = world.resolve("levelmod_places.json");
-		if (!java.nio.file.Files.exists(placesFile) && java.nio.file.Files.isRegularFile(bundled)) {
+		placesFile = com.smeshariki.mod.WorldData.path(server, LevelMod.NAMESPACE, "places.json", "levelmod_places.json");
+		// до 2026-11-21 файл жил вне мира, в папке игры по имени папки мира: копируется в мир один раз, прежний остаётся копией
+		java.nio.file.Path old = com.smeshariki.level.ModData.moved(com.smeshariki.level.ModData.game("levelmod", "worlds"), com.smeshariki.level.ModData.dir().resolve("worlds")).resolve(name).resolve("places.json");
+		if (!java.nio.file.Files.exists(placesFile) && java.nio.file.Files.isRegularFile(old)) {
 			try {
 				java.nio.file.Files.createDirectories(placesFile.getParent());
-				java.nio.file.Files.copy(bundled, placesFile);
-				LevelMod.LOGGER.info("Локации и группы взяты из мира: {}", bundled);
+				java.nio.file.Files.copy(old, placesFile);
+				LevelMod.LOGGER.info("Локации и группы скопированы в мир: {} -> {}", old, placesFile);
 			} catch (java.io.IOException e) {
-				LevelMod.LOGGER.warn("Не удалось взять локации из {}", bundled, e);
+				LevelMod.LOGGER.warn("Не удалось скопировать локации {} в мир", old, e);
 			}
 		}
 		try {

@@ -26,7 +26,14 @@ public final class LevelCommands {
 				.then(Commands.literal("complete").executes(ctx -> run(ctx.getSource(), true, null))
 						.then(Commands.argument("level", StringArgumentType.greedyString()).executes(ctx -> run(ctx.getSource(), true, StringArgumentType.getString(ctx, "level")))))
 				.then(Commands.literal("skip").executes(ctx -> run(ctx.getSource(), false, null))
-						.then(Commands.argument("level", StringArgumentType.greedyString()).executes(ctx -> run(ctx.getSource(), false, StringArgumentType.getString(ctx, "level")))))));
+						.then(Commands.argument("level", StringArgumentType.greedyString()).executes(ctx -> run(ctx.getSource(), false, StringArgumentType.getString(ctx, "level")))))
+				// откат области-локации к сохранённой версии мира
+				.then(Commands.literal("reset").then(Commands.argument("place", StringArgumentType.greedyString())
+						.suggests((ctx, builder) -> net.minecraft.commands.SharedSuggestionProvider.suggest(LevelStore.get(ctx.getSource().getServer()).locationAreas().keySet(), builder))
+						.executes(ctx -> {
+							CommandSourceStack source = ctx.getSource();
+							return LevelManager.resetPlace(source.getServer(), StringArgumentType.getString(ctx, "place"), text -> source.sendSystemMessage(text)) ? 1 : 0;
+						})))));
 	}
 
 	private static int run(CommandSourceStack source, boolean complete, String level) {
